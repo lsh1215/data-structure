@@ -34,7 +34,7 @@
 /* ── 색인 무대 ── */
 .es-grid {
   display: grid;
-  grid-template-columns: 340px 1fr;
+  grid-template-columns: 340px minmax(0, 1fr);
   min-height: 320px;
 }
 .es-col { padding: var(--sp-4) var(--sp-5); overflow: auto; max-height: 460px; }
@@ -79,7 +79,7 @@
 /* 역색인 테이블 */
 .ix-row {
   display: grid;
-  grid-template-columns: 130px 42px 1fr;
+  grid-template-columns: 130px 42px minmax(0, 1fr);
   align-items: center;
   gap: var(--sp-3);
   padding: 5px 8px;
@@ -187,7 +187,7 @@
 }
 
 @media (max-width: 900px) {
-  .es-grid { grid-template-columns: 1fr; }
+  .es-grid { grid-template-columns: minmax(0, 1fr); }
   .es-col + .es-col { border-left: none; border-top: 1px solid var(--bg-border); }
-  .ix-row { grid-template-columns: 100px 36px 1fr; font-size: 11px; }
+  .ix-row { grid-template-columns: 90px 34px minmax(0, 1fr); font-size: 11px; }
 }
