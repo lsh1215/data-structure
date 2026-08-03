@@ -1,0 +1,49 @@
+name: Test & Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: 자료구조 구현 검증
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: B-Tree / B+Tree 무결성
+        run: node tests/btree.test.js
+      - name: Redis dict / 리해싱
+        run: node tests/redis.test.js
+      - name: Skiplist span / 레벨 분포
+        run: node tests/skiplist.test.js
+      - name: 역색인 / BM25 / 세그먼트
+        run: node tests/es.test.js
+
+  deploy:
+    name: Pages 배포
+    needs: test
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+      - id: deployment
+        uses: actions/deploy-pages@v4

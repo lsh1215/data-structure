@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DB Internals Visualized — 데이터베이스 자료구조 시각화</title>
+
+  <meta name="description" content="RDB의 B-Tree/B+Tree, Redis의 dict/hashtable, Elasticsearch의 역색인. 데이터를 하나씩 넣어보며 자료구조가 어떻게 변하는지 애니메이션으로 이해합니다." />
+  <meta name="keywords" content="B-Tree, B+Tree, Redis dict, hashtable, rehash, skiplist, Elasticsearch, inverted index, 자료구조 시각화, database internals" />
+  <meta name="author" content="leesanghun" />
+  <meta name="robots" content="index, follow" />
+
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="DB Internals Visualized" />
+  <meta property="og:description" content="RDB · Redis · Elasticsearch 내부 자료구조를 애니메이션으로 이해하기" />
+  <meta property="og:site_name" content="DB Internals Visualized" />
+
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗄️</text></svg>" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="assets/css/base.css" />
+  <link rel="stylesheet" href="assets/css/home.css" />
+
+  <noscript><style>.db-card{opacity:1;transform:none;}.hub__title-line,.hub__sub,.hub__eyebrow{opacity:1;transform:none;}</style></noscript>
+</head>
+<body>
+
+<canvas class="star-field" id="starField" data-colors="#00d9c0,#ff5470,#a855f7" aria-hidden="true"></canvas>
+
+<main class="hub">
+  <div class="hub__glow" aria-hidden="true"></div>
+
+  <header class="hub__head">
+    <div class="eyebrow hub__eyebrow">
+      <span class="eyebrow__dot" aria-hidden="true"></span>
+      <span>Database Internals · Interactive</span>
+    </div>
+
+    <h1 class="hub__title">
+      <span class="hub__title-line">자료구조를</span>
+      <span class="hub__title-line hub__title-line--accent">눈으로 이해하기</span>
+    </h1>
+
+    <p class="hub__sub">
+      글로 읽는 B+Tree는 이해되지 않습니다. 데이터를 하나씩 넣어보고,<br />
+      노드가 쪼개지고 버킷이 채워지는 과정을 직접 보면 이해됩니다.
+    </p>
+
+    <div class="flex center gap3 wrap" style="justify-content:center">
+      <span class="badge badge--muted">3 Databases</span>
+      <span class="badge badge--muted">12 Visualizations</span>
+      <span class="badge badge--muted">Zero Dependency</span>
+    </div>
+  </header>
+
+  <div class="db-grid" role="list">
+
+    <!-- ── RDB ── -->
+    <a href="./rdb/" class="db-card db-card--rdb" role="listitem" aria-label="RDB 인덱스 자료구조 보기">
+      <div class="db-card__glow" aria-hidden="true"></div>
+      <div class="db-card__inner">
+        <div class="db-card__header">
+          <div class="db-card__icon-wrap" aria-hidden="true"><span class="db-card__icon">🌲</span></div>
+          <div class="db-card__status"><span class="db-card__status-dot"></span><span>Index</span></div>
+        </div>
+
+        <div class="db-card__body">
+          <h2 class="db-card__name">RDB — B-Tree / B+Tree</h2>
+          <p class="db-card__tagline">PostgreSQL · MySQL InnoDB 인덱스가 디스크 위에서 자라는 방식</p>
+
+          <div class="db-card__badges">
+            <span class="db-chip">B-Tree</span>
+            <span class="db-chip">B+Tree</span>
+            <span class="db-chip">Split</span>
+            <span class="db-chip">Range Scan</span>
+          </div>
+
+          <ul class="db-card__features">
+            <li class="db-card__feature"><i>→</i>키를 하나씩 삽입하며 노드 분할·루트 승격 관찰</li>
+            <li class="db-card__feature"><i>→</i>탐색 경로 · 비교 횟수 · 디스크 I/O 실시간 계측</li>
+            <li class="db-card__feature"><i>→</i>리프 연결 리스트로 범위 스캔 애니메이션</li>
+            <li class="db-card__feature"><i>→</i>log의 밑이 왜 fanout인지 수식으로 유도</li>
+          </ul>
+        </div>
+
+        <div class="db-card__footer">
+          <span class="db-card__cta">Explore
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+              <line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline>
+            </svg>
+          </span>
+          <span class="db-card__slug">rdb/</span>
+        </div>
+      </div>
+    </a>
+
+    <!-- ── Redis ── -->
+    <a href="./redis/" class="db-card db-card--redis" role="listitem" aria-label="Redis 내부 자료구조 보기">
+      <div class="db-card__glow" aria-hidden="true"></div>
+      <div class="db-card__inner">
+        <div class="db-card__header">
+          <div class="db-card__icon-wrap" aria-hidden="true"><span class="db-card__icon">⚡</span></div>
+          <div class="db-card__status"><span class="db-card__status-dot"></span><span>In-Memory</span></div>
+        </div>
+
+        <div class="db-card__body">
+          <h2 class="db-card__name">Redis — dict · hashtable</h2>
+          <p class="db-card__tagline">SET 한 줄이 dictEntry가 되어 버킷에 매달리기까지</p>
+
+          <div class="db-card__badges">
+            <span class="db-chip">dict</span>
+            <span class="db-chip">bucket</span>
+            <span class="db-chip">rehash</span>
+            <span class="db-chip">skiplist</span>
+          </div>
+
+          <ul class="db-card__features">
+            <li class="db-card__feature"><i>→</i>command → hash → bucket index → dictEntry 전 과정</li>
+            <li class="db-card__feature"><i>→</i>충돌 체이닝과 load factor 추적</li>
+            <li class="db-card__feature"><i>→</i>ht[0] → ht[1] 점진적 리해싱 스텝 재생</li>
+            <li class="db-card__feature"><i>→</i>ZSET skiplist의 확률적 레벨 생성</li>
+          </ul>
+        </div>
+
+        <div class="db-card__footer">
+          <span class="db-card__cta">Explore
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+              <line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline>
+            </svg>
+          </span>
+          <span class="db-card__slug">redis/</span>
+        </div>
+      </div>
+    </a>
+
+    <!-- ── Elasticsearch ── -->
+    <a href="./elasticsearch/" class="db-card db-card--es" role="listitem" aria-label="Elasticsearch 내부 자료구조 보기">
+      <div class="db-card__glow" aria-hidden="true"></div>
+      <div class="db-card__inner">
+        <div class="db-card__header">
+          <div class="db-card__icon-wrap" aria-hidden="true"><span class="db-card__icon">🔍</span></div>
+          <div class="db-card__status"><span class="db-card__status-dot"></span><span>Search</span></div>
+        </div>
+
+        <div class="db-card__body">
+          <h2 class="db-card__name">Elasticsearch — 역색인</h2>
+          <p class="db-card__tagline">문서가 토큰으로 부서져 posting list에 쌓이는 과정</p>
+
+          <div class="db-card__badges">
+            <span class="db-chip">Analyzer</span>
+            <span class="db-chip">Inverted Index</span>
+            <span class="db-chip">Segment</span>
+            <span class="db-chip">BM25</span>
+          </div>
+
+          <ul class="db-card__features">
+            <li class="db-card__feature"><i>→</i>문자 필터 → 토크나이저 → 토큰 필터 파이프라인</li>
+            <li class="db-card__feature"><i>→</i>term dictionary + posting list 실시간 구축</li>
+            <li class="db-card__feature"><i>→</i>세그먼트 refresh · merge · translog 타임라인</li>
+            <li class="db-card__feature"><i>→</i>BM25 점수를 숫자로 뜯어보기</li>
+          </ul>
+        </div>
+
+        <div class="db-card__footer">
+          <span class="db-card__cta">Explore
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+              <line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline>
+            </svg>
+          </span>
+          <span class="db-card__slug">elasticsearch/</span>
+        </div>
+      </div>
+    </a>
+
+  </div>
+
+  <section class="hub__note">
+    <div class="panel">
+      <h3>왜 자료구조부터인가</h3>
+      <p>인덱스를 타는지 안 타는지, 왜 <span class="mono acc">LIKE '%x'</span>는 느린지, 왜 Redis가 O(1)인지는 전부 내부 자료구조의 모양에서 결정됩니다. 튜닝 가이드를 외우는 대신 모양을 기억하세요.</p>
+    </div>
+    <div class="panel">
+      <h3>직접 조작해서 확인</h3>
+      <p>모든 시각화는 실제 알고리즘 구현 위에서 동작합니다. 값을 넣고, 지우고, 차수를 바꾸고, 속도를 조절하면 트리와 해시 테이블이 실제로 그렇게 변합니다.</p>
+    </div>
+    <div class="panel">
+      <h3>숫자까지 같이</h3>
+      <p>애니메이션 아래에는 항상 계측값이 붙습니다. 트리 높이, 비교 횟수, 디스크 I/O, load factor, BM25 점수 — 눈으로 본 것을 숫자로 다시 확인합니다.</p>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="flex center gap3 wrap" style="justify-content:center">
+    <span>DB Internals Visualized</span>
+    <span class="muted">·</span>
+    <a href="https://github.com/lsh1215" target="_blank" rel="noopener noreferrer">github.com/lsh1215</a>
+  </div>
+  <p class="muted">Built with vanilla JS · No framework, no build step</p>
+</footer>
+
+<script src="assets/js/starfield.js"></script>
+</body>
+</html>

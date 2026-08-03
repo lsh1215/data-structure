@@ -1,0 +1,276 @@
+/* ═══════════════════════════════════════════════════════════
+   Redis — command pipeline · dict/hashtable · skiplist
+═══════════════════════════════════════════════════════════ */
+
+/* ── 해시 테이블 무대 ── */
+.htab-stage {
+  position: relative;
+  overflow: auto;
+  padding: var(--sp-6) var(--sp-4);
+  min-height: 330px;
+  background-image:
+    radial-gradient(circle at 50% 0%, rgba(255,84,112,.05) 0%, transparent 55%),
+    linear-gradient(rgba(255,255,255,.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.02) 1px, transparent 1px);
+  background-size: 100% 100%, 34px 34px, 34px 34px;
+}
+.htab-frame { position: relative; width: 100%; }
+.htab-world {
+  position: relative;
+  transform-origin: top left;
+  transition: transform .5s var(--ease-out);
+}
+
+.tbl-label {
+  position: absolute;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  transition: transform .5s var(--ease-out), opacity .4s;
+}
+.tbl-label b { color: var(--text-primary); font-weight: 500; }
+.tbl-label .tag {
+  padding: 2px 8px;
+  border-radius: 5px;
+  background: rgba(255,255,255,.05);
+  border: 1px solid var(--bg-border);
+  font-size: 10.5px;
+  letter-spacing: .05em;
+}
+.tbl-label .tag--new { background: var(--accent-dim); color: var(--accent); border-color: var(--accent-border); }
+
+/* 버킷 슬롯 */
+.bucket {
+  position: absolute;
+  top: 0; left: 0;
+  height: 34px;
+  border-radius: 8px;
+  background: rgba(255,255,255,.035);
+  border: 1px solid rgba(255,255,255,.09);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  transition: transform .5s var(--ease-out), border-color .3s, background .3s, box-shadow .3s, opacity .3s;
+}
+.bucket--active {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+  color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-dim), 0 0 20px -6px var(--accent-glow);
+}
+.bucket--filled { color: var(--text-secondary); border-color: rgba(255,255,255,.16); }
+.bucket--migrated { opacity: .35; border-style: dashed; }
+.bucket--cursor {
+  border-color: var(--warn);
+  box-shadow: 0 0 0 2px rgba(251,191,36,.16);
+}
+.bucket__i { opacity: .75; }
+
+/* 체인 엔트리 */
+.entry {
+  position: absolute;
+  top: 0; left: 0;
+  border-radius: 9px;
+  background: rgba(18, 24, 40, .96);
+  border: 1px solid rgba(255,255,255,.1);
+  padding: 6px 8px;
+  box-shadow: 0 6px 16px -8px rgba(0,0,0,.8);
+  transition: transform .55s var(--ease-out), border-color .3s, box-shadow .3s, opacity .35s;
+  overflow: hidden;
+}
+.entry::before {
+  content: '';
+  position: absolute;
+  left: 14px; top: -13px;
+  width: 1.5px; height: 13px;
+  background: rgba(255,255,255,.22);
+}
+.entry::after {
+  content: '';
+  position: absolute;
+  left: 11.5px; top: -5px;
+  border-left: 3.5px solid transparent;
+  border-right: 3.5px solid transparent;
+  border-top: 5px solid rgba(255,255,255,.3);
+}
+.entry__k {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--accent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.entry__v {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.entry__h {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  margin-top: 2px;
+  display: flex;
+  justify-content: space-between;
+  gap: 4px;
+}
+.entry__enc { color: var(--text-muted); opacity: .8; }
+.entry--active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-dim), 0 0 24px -8px var(--accent-glow);
+}
+.entry--new { animation: entryPop .5s var(--ease-snap); border-color: var(--ok); }
+@keyframes entryPop {
+  0% { opacity: 0; transform: translate(var(--tx), var(--ty)) scale(.5); }
+  100% { opacity: 1; }
+}
+.entry--compare { border-color: var(--warn); }
+.entry--moving { border-color: var(--warn); box-shadow: 0 0 0 3px rgba(251,191,36,.14); }
+.entry--dying { opacity: .3; border-color: var(--hot); }
+.entry--enter { animation: fadeIn .4s var(--ease-out); }
+@keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
+
+.chain-null {
+  position: absolute;
+  top: 0; left: 0;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--text-muted);
+  opacity: .55;
+  transition: transform .5s var(--ease-out), opacity .3s;
+  white-space: nowrap;
+}
+
+/* 해시 계산 패널 */
+.hashbox {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.9;
+  white-space: pre-wrap;
+  color: var(--text-secondary);
+  background: rgba(255,255,255,.025);
+  border: 1px solid var(--bg-border);
+  border-left: 2px solid var(--accent);
+  border-radius: var(--radius-sm);
+  padding: var(--sp-4);
+  min-height: 110px;
+  max-height: 220px;
+  overflow: auto;
+}
+.hashbox strong { color: var(--accent); font-weight: 500; }
+
+/* ── Skiplist ── */
+.sl-stage {
+  position: relative;
+  overflow-x: auto;
+  padding: var(--sp-6) var(--sp-5);
+  min-height: 260px;
+  background-image: radial-gradient(circle at 50% 0%, rgba(168,85,247,.05) 0%, transparent 60%);
+}
+.sl-world { position: relative; }
+
+.sl-node {
+  position: absolute;
+  top: 0; left: 0;
+  transition: transform .5s var(--ease-out), opacity .3s;
+}
+.sl-cell {
+  position: absolute;
+  border-radius: 6px;
+  background: rgba(255,255,255,.05);
+  border: 1px solid rgba(255,255,255,.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  transition: all .3s var(--ease-out);
+}
+.sl-cell--hi {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-dim);
+}
+.sl-head {
+  background: rgba(255,255,255,.03);
+  border-style: dashed;
+}
+.sl-label {
+  position: absolute;
+  border-radius: 8px;
+  background: rgba(18,24,40,.96);
+  border: 1px solid rgba(255,255,255,.12);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  transition: all .3s var(--ease-out);
+}
+.sl-label b { font-size: 12px; color: var(--text-primary); font-weight: 500; }
+.sl-label span { font-size: 9.5px; color: var(--text-muted); }
+.sl-label--hi { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
+.sl-label--new { border-color: var(--ok); box-shadow: 0 0 0 3px rgba(52,211,153,.14); }
+
+.sl-arrow {
+  position: absolute;
+  height: 2px;
+  background: rgba(255,255,255,.16);
+  transition: all .45s var(--ease-out);
+}
+.sl-arrow::after {
+  content: '';
+  position: absolute;
+  right: -1px; top: -3px;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 6px solid rgba(255,255,255,.3);
+}
+.sl-arrow--hi { background: var(--accent); box-shadow: 0 0 8px var(--accent-glow); }
+.sl-arrow--hi::after { border-left-color: var(--accent); }
+.sl-lvl {
+  position: absolute;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--text-muted);
+  opacity: .6;
+  white-space: nowrap;
+}
+
+/* 다이스 애니메이션 */
+.dice {
+  display: inline-flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.dice i {
+  font-style: normal;
+  padding: 2px 7px;
+  border-radius: 5px;
+  border: 1px solid var(--bg-border);
+  background: rgba(255,255,255,.04);
+  color: var(--text-muted);
+}
+.dice i.ok { color: var(--ok); border-color: rgba(52,211,153,.3); background: rgba(52,211,153,.08); }
+.dice i.no { color: var(--hot); border-color: rgba(251,113,133,.3); background: rgba(251,113,133,.08); }
+
+@media (max-width: 900px) {
+  .pipe__stage { min-width: 82px; font-size: 10.5px; }
+  .htab-stage { min-height: 260px; }
+}

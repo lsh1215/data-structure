@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Elasticsearch — 역색인 · Analyzer · BM25 시각화</title>
+  <meta name="description" content="문서가 토큰으로 분해되어 posting list에 쌓이고, 검색어가 같은 파이프라인을 거쳐 교집합과 BM25 점수로 이어지는 과정을 애니메이션으로 확인합니다." />
+
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔍</text></svg>" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../assets/css/base.css" />
+  <link rel="stylesheet" href="../assets/css/tree.css" />
+  <link rel="stylesheet" href="../assets/css/es.css" />
+  <style>:root { --accent: var(--es); --accent-2: var(--es-b); --accent-dim: var(--es-dim); --accent-border: var(--es-border); --accent-glow: var(--es-glow); }</style>
+</head>
+<body>
+
+<canvas class="star-field" id="starField" data-colors="#a855f7,#3b82f6" aria-hidden="true"></canvas>
+
+<nav class="topbar">
+  <a class="topbar__home" href="../">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+      <line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline>
+    </svg>
+    Home
+  </a>
+  <div class="topbar__title">Elasticsearch <span class="sub">inverted index · BM25</span></div>
+  <div class="topbar__spacer"></div>
+  <div class="topbar__links">
+    <a class="topbar__link topbar__link--active" href="#viz">색인과 검색</a>
+    <a class="topbar__link" href="#bm25">BM25</a>
+    <a class="topbar__link" href="#segment">세그먼트</a>
+    <a class="topbar__link" href="#structures">내부 자료구조</a>
+    <a class="topbar__link" href="#practice">실무 연결</a>
+  </div>
+</nav>
+
+<main class="page">
+
+  <header class="page-hero">
+    <div class="eyebrow"><span class="eyebrow__dot"></span><span>Search Engine · Inverted Index</span></div>
+    <h1 class="page-title">문서를 부수어<br /><span class="grad">단어에서 문서로 뒤집기</span></h1>
+    <p class="page-sub">
+      RDB의 인덱스가 “값 → 행”이라면, 검색 엔진의 역색인은 <strong>“단어 → 그 단어가 든 문서 목록”</strong>입니다.
+      문서가 어떻게 토큰으로 쪼개지고, 그 토큰이 어떤 posting list 에 쌓이며,
+      검색어가 어떻게 같은 파이프라인을 거쳐 문서를 만나는지 한 단계씩 확인하세요.
+    </p>
+  </header>
+
+  <!-- ═══════════ 1. 색인 & 검색 ═══════════ -->
+  <section class="section" id="viz">
+    <div class="section__head">
+      <div class="section__num">01 / INDEX &amp; SEARCH</div>
+      <h2 class="section__title">색인 파이프라인과 검색 파이프라인</h2>
+      <p class="section__desc">
+        핵심 규칙은 하나입니다 — <strong>색인할 때와 검색할 때 완전히 같은 analyzer 를 거쳐야 한다.</strong>
+        “Redis”로 색인하고 “redis”로 검색해서 안 나오는 사고는 전부 이 규칙을 어겨서 생깁니다.
+      </p>
+    </div>
+
+    <div class="viz">
+      <div class="pipe" id="esPipe"></div>
+      <div class="tokens" id="esTokens"></div>
+
+      <div class="viz__bar">
+        <input class="input" id="esInput" type="text" placeholder="색인할 문서를 입력하세요" style="flex:1;min-width:220px" aria-label="문서 입력" />
+        <button class="btn btn--primary" id="esAdd" type="button">＋ 색인</button>
+        <button class="btn btn--sm" id="esSeed" type="button">예제 문서 추가</button>
+        <button class="btn btn--sm btn--danger" id="esReset" type="button">초기화</button>
+      </div>
+
+      <div class="viz__bar">
+        <input class="input" id="esQuery" type="text" value="hash table" placeholder="검색어" style="min-width:200px" aria-label="검색어" />
+        <div class="segmented" id="esMode" role="group" aria-label="불리언 모드">
+          <button type="button" data-mode="AND" aria-pressed="true">AND</button>
+          <button type="button" data-mode="OR" aria-pressed="false">OR</button>
+        </div>
+        <button class="btn btn--primary" id="esSearch" type="button">🔎 검색</button>
+        <div class="topbar__spacer"></div>
+        <button class="btn btn--sm" id="esPrev" type="button">◀</button>
+        <button class="btn btn--sm" id="esPlay" type="button">▶ 재생</button>
+        <button class="btn btn--sm" id="esNext" type="button">▶</button>
+        <span class="mono muted" id="esStep" style="font-size:11px">step 0 / 0</span>
+        <span class="narr__bar" style="max-width:130px"><span class="narr__bar-fill" id="esBar"></span></span>
+        <input type="range" id="esSpeed" min="0.4" max="4" step="0.2" value="1.6" aria-label="속도" />
+      </div>
+
+      <div class="es-grid">
+        <div class="es-col">
+          <div class="panel__label">문서 (forward)</div>
+          <div id="esDocs"></div>
+        </div>
+        <div class="es-col">
+          <div class="panel__label">역색인 (inverted)</div>
+          <div id="esIndex"></div>
+        </div>
+      </div>
+
+      <div class="viz__foot">
+        <div class="viz__narration">
+          <div class="panel__label">현재 단계</div>
+          <div class="narr"><span class="narr__kind" id="esKind">idle</span><span id="esMsg">문서를 색인하거나 검색해 보세요</span></div>
+          <div class="hashbox mt3" id="esDetail" style="white-space:pre-wrap">—</div>
+        </div>
+        <div class="viz__counters">
+          <div class="panel__label">인덱스 상태</div>
+          <div class="mini-stats">
+            <div><div class="mini-stat__k">문서 N</div><div class="mini-stat__v acc" id="esN">0</div></div>
+            <div><div class="mini-stat__k">term 수</div><div class="mini-stat__v" id="esTerms">0</div></div>
+            <div><div class="mini-stat__k">평균 길이</div><div class="mini-stat__v" id="esAvgdl">0</div></div>
+            <div><div class="mini-stat__k">posting 총합</div><div class="mini-stat__v" id="esPostings">0</div></div>
+          </div>
+          <div class="prose mt4" style="font-size:13px">
+            <code>df</code> 는 그 term 이 등장한 문서 수, <code>#3:2</code> 는 “문서 3에 2번 등장”이라는 뜻입니다.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid grid--3 mt6">
+      <div class="panel">
+        <div class="panel__label">해보기 ①</div>
+        <p class="prose" style="font-size:14px">
+          <code>The Hash Tables</code> 로 검색해 보세요. 대문자·불용어·복수형이 모두 정규화되어
+          <code>hash table</code> 과 같은 결과가 나옵니다.
+        </p>
+      </div>
+      <div class="panel">
+        <div class="panel__label">해보기 ②</div>
+        <p class="prose" style="font-size:14px">
+          <strong>AND</strong> 와 <strong>OR</strong> 를 바꿔가며 <code>redis tree</code> 를 검색해 보세요.
+          posting list 두 개가 어떻게 합쳐지는지 단계별로 보입니다.
+        </p>
+      </div>
+      <div class="panel">
+        <div class="panel__label">해보기 ③</div>
+        <p class="prose" style="font-size:14px">
+          같은 단어를 여러 번 넣은 문서를 색인하고 검색해 보세요.
+          <code>tf</code> 가 올라가면서 BM25 점수가 어떻게 변하는지 아래 계산식에 그대로 나옵니다.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ 2. BM25 ═══════════ -->
+  <section class="section" id="bm25">
+    <div class="section__head">
+      <div class="section__num">02 / SCORING</div>
+      <h2 class="section__title">BM25 — 왜 이 문서가 1등인가</h2>
+      <p class="section__desc">
+        검색 결과 순서는 마법이 아니라 하나의 수식입니다. 위 시각화에서 검색하면 문서마다 이 계산이 그대로 찍힙니다.
+      </p>
+    </div>
+
+    <div class="panel">
+      <div class="math">score(D, Q) = Σ<sub>t∈Q</sub>  IDF(t) · <span class="hi">tf(t,D) · (k₁ + 1)</span>
+                        ─────────────────────────────
+                        tf(t,D) + k₁ · (1 − b + b · <span class="hi">dl/avgdl</span>)
+
+IDF(t) = ln( 1 + (N − df(t) + 0.5) / (df(t) + 0.5) )
+
+<span class="cm">// 기본 파라미터</span>
+k₁ = 1.2   <span class="cm">// tf 포화 속도. 클수록 반복 등장을 더 인정</span>
+b  = 0.75  <span class="cm">// 문서 길이 정규화 강도. 0이면 길이 무시</span></div>
+
+      <div class="grid grid--3 mt6">
+        <div class="panel">
+          <h4 class="prose" style="margin-top:0">IDF — 흔한 단어는 깎는다</h4>
+          <div class="prose" style="font-size:14px">
+            <p><code>df</code> 가 클수록 (= 많은 문서에 등장할수록) 값이 작아집니다.
+            모든 문서에 나오는 단어는 변별력이 없으니까요.</p>
+            <ul>
+              <li>N=1000, df=1 → IDF ≈ 6.5</li>
+              <li>N=1000, df=500 → IDF ≈ 0.69</li>
+              <li>+0.5 와 ln(1+…) 은 df가 클 때 음수가 되는 걸 막는 보정</li>
+            </ul>
+          </div>
+        </div>
+        <div class="panel">
+          <h4 class="prose" style="margin-top:0">tf 포화 — 10번이 2번의 5배는 아니다</h4>
+          <div class="prose" style="font-size:14px">
+            <p>분모에 <code>tf</code> 가 있어 tf가 커질수록 증가폭이 줄고 <code>k₁+1</code> 에 수렴합니다.</p>
+            <ul>
+              <li>tf 1 → 2 : 점수 크게 상승</li>
+              <li>tf 10 → 20 : 거의 변화 없음</li>
+              <li>TF-IDF의 “키워드 도배” 취약점을 막는 장치</li>
+            </ul>
+          </div>
+        </div>
+        <div class="panel">
+          <h4 class="prose" style="margin-top:0">길이 정규화 — 긴 문서 불리</h4>
+          <div class="prose" style="font-size:14px">
+            <p><code>dl/avgdl</code> 이 1보다 크면 (평균보다 긴 문서) 분모가 커져 점수가 깎입니다.</p>
+            <ul>
+              <li>긴 문서는 우연히 단어를 포함할 확률이 높기 때문</li>
+              <li><code>b=0</code> 이면 길이를 완전히 무시</li>
+              <li>제목 필드처럼 짧은 필드는 b를 낮추기도 한다</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="callout callout--accent mt6">
+        <span class="callout__t">TF-IDF 와의 차이</span>
+        TF-IDF 는 <span class="mono">tf × idf</span> 로 tf 가 선형으로 반영되고 문서 길이를 직접 다루지 않습니다.
+        BM25 는 <strong>tf 포화</strong>와 <strong>길이 정규화</strong>를 확률 모델에서 유도해 넣은 것이고,
+        그래서 Lucene 6부터 기본 유사도가 BM25 로 바뀌었습니다.
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ 3. 세그먼트 ═══════════ -->
+  <section class="section" id="segment">
+    <div class="section__head">
+      <div class="section__num">03 / SEGMENT</div>
+      <h2 class="section__title">색인했는데 왜 바로 검색이 안 되는가</h2>
+      <p class="section__desc">
+        Lucene 세그먼트는 <strong>한 번 쓰면 못 고치는(immutable)</strong> 파일입니다.
+        그래서 색인은 “버퍼에 모았다가 → 세그먼트를 새로 만들고 → 나중에 합치는” 방식으로 동작합니다.
+      </p>
+    </div>
+
+    <div class="viz">
+      <div class="viz__bar">
+        <button class="btn btn--primary" id="segIndex" type="button">문서 3개 색인</button>
+        <button class="btn" id="segRefresh" type="button">refresh (1s)</button>
+        <button class="btn" id="segFlush" type="button">flush</button>
+        <button class="btn" id="segMerge" type="button">merge</button>
+        <button class="btn" id="segDelete" type="button">문서 삭제</button>
+        <div class="topbar__spacer"></div>
+        <span class="mono muted" style="font-size:11px">세그먼트 <b id="segCount">0</b> · live <b id="segLive">0</b> · 삭제표시 <b id="segDel">0</b></span>
+        <button class="btn btn--sm btn--danger" id="segReset" type="button">초기화</button>
+      </div>
+
+      <div class="seg-stage">
+        <div class="seg-lane">
+          <span class="seg-lane__label">메모리 버퍼</span>
+          <div class="seg-box" id="segBuffer"></div>
+        </div>
+        <div class="seg-lane">
+          <span class="seg-lane__label">translog</span>
+          <div class="seg-box" id="segTranslog"></div>
+        </div>
+        <div class="seg-lane" style="align-items:flex-start">
+          <span class="seg-lane__label">세그먼트 (검색 대상)</span>
+          <div class="seg-box" id="segList" style="flex-wrap:wrap;gap:10px;align-items:flex-start"></div>
+        </div>
+      </div>
+
+      <div class="viz__foot">
+        <div class="viz__narration">
+          <div class="panel__label">현재 단계</div>
+          <div class="narr"><span class="narr__kind" id="segKind">idle</span><span id="segMsg">색인 요청부터 시작해 보세요</span></div>
+          <div class="hashbox mt3" id="segDetail" style="min-height:80px">—</div>
+        </div>
+        <div class="viz__counters">
+          <div class="panel__label">왜 이런 구조인가</div>
+          <div class="prose" style="font-size:13.5px">
+            <ul>
+              <li>불변이라 <strong>락 없이 동시 읽기</strong>가 가능하다</li>
+              <li>불변이라 <strong>OS 캐시에 그대로</strong> 올려둘 수 있다</li>
+              <li>대신 삭제·수정은 “표시”만 하고 <strong>merge 때 정리</strong></li>
+              <li>세그먼트가 많으면 검색이 느려진다 (모두 뒤져야 하므로)</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid grid--2 mt6">
+      <div class="panel">
+        <h4 class="prose" style="margin-top:0">refresh vs flush vs commit</h4>
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead><tr><th style="width:90px">동작</th><th style="width:130px">주기</th><th>결과</th></tr></thead>
+            <tbody>
+              <tr><td class="mono">refresh</td><td class="mono">1초 (기본)</td><td>버퍼 → 새 세그먼트. <strong>이때부터 검색됨</strong>. fsync 는 안 함</td></tr>
+              <tr><td class="mono">flush</td><td class="mono">30분 / 512MB</td><td>fsync + translog 비움. Lucene commit</td></tr>
+              <tr><td class="mono">merge</td><td class="mono">백그라운드</td><td>작은 세그먼트들을 합치고 삭제 문서를 실제로 제거</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="prose mt4" style="font-size:13.5px">
+          대량 색인 작업에서는 <code>index.refresh_interval</code> 을 <code>-1</code> 로 껐다가 끝나고 되돌리면
+          세그먼트 생성과 병합 비용이 크게 줄어 처리량이 몇 배 올라갑니다.
+        </p>
+      </div>
+      <div class="panel">
+        <h4 class="prose" style="margin-top:0">“업데이트”라는 것은 없다</h4>
+        <div class="prose">
+          <p>문서를 수정하면 Elasticsearch 는 내부적으로 이렇게 합니다.</p>
+          <ul>
+            <li>기존 문서를 <strong>삭제 표시</strong>(.del 비트)</li>
+            <li>수정된 내용을 <strong>새 문서로 색인</strong> (버전 +1)</li>
+            <li>merge 될 때 옛 문서가 물리적으로 사라짐</li>
+          </ul>
+          <p>그래서 잦은 부분 업데이트는 세그먼트를 부풀리고 merge 부하를 키웁니다.
+          자주 바뀌는 필드는 아예 다른 저장소에 두거나, 별도 인덱스로 분리하는 편이 낫습니다.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ 4. 내부 자료구조 ═══════════ -->
+  <section class="section" id="structures">
+    <div class="section__head">
+      <div class="section__num">04 / STRUCTURES</div>
+      <h2 class="section__title">역색인 하나에 들어 있는 자료구조들</h2>
+      <p class="section__desc">위 표 하나처럼 보이지만, 실제 Lucene 세그먼트 안에는 목적이 다른 자료구조가 여러 개 들어 있습니다.</p>
+    </div>
+
+    <div class="panel panel--flush">
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr><th style="width:170px">자료구조</th><th style="width:150px">담당</th><th>왜 그것인가</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">FST</td><td>term dictionary</td><td>정렬된 term 들의 접두사를 공유해 저장. 수백만 term 도 메모리에 올라간다. 조회는 term 길이에 비례 — <span class="mono acc">O(len)</span></td></tr>
+            <tr><td class="mono">posting list</td><td>term → 문서 목록</td><td>문서 ID 오름차순. delta 인코딩 + VInt/FOR-PFOR 압축으로 크기를 줄인다</td></tr>
+            <tr><td class="mono">skip list</td><td>posting 건너뛰기</td><td>AND 병합 시 맞지 않는 구간을 통째로 뛰어넘는다. 128개마다 skip 포인터</td></tr>
+            <tr><td class="mono">doc values</td><td>정렬 · 집계</td><td>역색인의 반대 방향(문서 → 값)을 <strong>컬럼 지향</strong>으로 따로 저장. 정렬/aggregation 전용</td></tr>
+            <tr><td class="mono">BKD tree</td><td>숫자 · 좌표 범위</td><td>숫자는 역색인이 비효율적이다. 다차원 공간을 블록으로 나눈 K-D 트리 변형을 쓴다</td></tr>
+            <tr><td class="mono">stored fields</td><td>_source 반환</td><td>원문 그대로 압축 저장. 검색에는 안 쓰이고 결과 반환에만 쓰인다</td></tr>
+            <tr><td class="mono">norms</td><td>길이 정규화</td><td>BM25 의 <span class="mono">dl</span> 을 1바이트로 압축해 문서마다 보관</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="grid grid--2 mt6">
+      <div class="panel">
+        <h4 class="prose" style="margin-top:0">복잡도 정리</h4>
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead><tr><th style="width:180px">연산</th><th style="width:150px">복잡도</th><th>비고</th></tr></thead>
+            <tbody>
+              <tr><td class="mono">term 조회</td><td class="mono acc">O(term 길이)</td><td>FST 는 term 개수와 거의 무관</td></tr>
+              <tr><td class="mono">단일 term 검색</td><td class="mono acc">O(df)</td><td>posting list 를 훑는다</td></tr>
+              <tr><td class="mono">AND 병합</td><td class="mono acc">O(Σdf)</td><td>skip list 로 실제로는 훨씬 적게 읽는다</td></tr>
+              <tr><td class="mono">Top-K 정렬</td><td class="mono acc">O(M log K)</td><td>M = 매칭 문서 수. 힙 하나로 상위 K만 유지</td></tr>
+              <tr><td class="mono">prefix 검색</td><td class="mono acc">O(접두사 매칭 term 수)</td><td>FST 를 접두사로 타고 내려간다</td></tr>
+              <tr><td class="mono">leading wildcard</td><td class="mono" style="color:var(--hot)">O(전체 term)</td><td><code>*abc</code> — 시작점이 없어 전부 훑는다</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h4 class="prose" style="margin-top:0">B+Tree 와 무엇이 다른가</h4>
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead><tr><th style="width:120px"></th><th>B+Tree (RDB)</th><th>역색인 (ES)</th></tr></thead>
+            <tbody>
+              <tr><td class="mono">키</td><td>컬럼 값 하나</td><td>문서를 쪼갠 term 수십 개</td></tr>
+              <tr><td class="mono">한 행당</td><td>인덱스 엔트리 1개</td><td>term 수만큼의 posting</td></tr>
+              <tr><td class="mono">질의</td><td>정확 일치 / 범위</td><td>부분 일치 / 유사도 순위</td></tr>
+              <tr><td class="mono">갱신</td><td>제자리 수정 (분할·병합)</td><td>불변 세그먼트 + 병합</td></tr>
+              <tr><td class="mono">결과</td><td>조건을 만족하는 집합</td><td>점수로 정렬된 <strong>순위</strong></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="prose mt4" style="font-size:13.5px">
+          <code>LIKE '%검색어%'</code> 가 느린 이유와 ES 가 필요한 이유가 같은 문장으로 설명됩니다 —
+          <strong>B+Tree는 값 전체를 하나의 키로 정렬</strong>하지만, <strong>역색인은 값을 쪼개서 각각을 키로</strong> 만들기 때문입니다.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ 5. 실무 ═══════════ -->
+  <section class="section" id="practice">
+    <div class="section__head">
+      <div class="section__num">05 / IN PRACTICE</div>
+      <h2 class="section__title">이 구조가 설정으로 드러나는 순간</h2>
+    </div>
+
+    <div class="grid grid--2">
+      <div class="panel">
+        <h4 class="prose" style="margin-top:0">text vs keyword</h4>
+        <div class="prose">
+          <ul>
+            <li><code>text</code> — analyzer 를 거쳐 토큰으로 쪼갠다. <strong>전문 검색용</strong>, 정렬·집계 불가</li>
+            <li><code>keyword</code> — 통째로 하나의 term. <strong>정확 일치·정렬·집계용</strong></li>
+            <li>둘 다 필요하면 <code>multi-field</code> 로 <code>title</code> + <code>title.keyword</code></li>
+          </ul>
+          <p>“정렬이 이상해요”의 90%는 text 필드로 정렬을 시도한 경우입니다. 토큰으로 쪼개져 있으니 당연합니다.</p>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h4 class="prose" style="margin-top:0">deep pagination 이 위험한 이유</h4>
+        <div class="prose">
+          <p><code>from=10000&amp;size=10</code> 은 각 샤드에서 <strong>10010건을 모두 정렬</strong>해 코디네이터로 보내야 합니다.</p>
+          <ul>
+            <li>샤드 10개면 100,100건이 메모리에 모인다</li>
+            <li>대안: <code>search_after</code> (마지막 정렬값 기준 이어받기)</li>
+            <li>전량 추출은 <code>scroll</code> 대신 <code>PIT + search_after</code></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h4 class="prose" style="margin-top:0">샤드 수를 늘린다고 빨라지지 않는다</h4>
+        <div class="prose">
+          <p>각 샤드는 <strong>독립적인 Lucene 인덱스</strong>입니다. 즉 세그먼트도, term dictionary 도 샤드마다 따로 있습니다.</p>
+          <ul>
+            <li>샤드가 많으면 병렬성은 오르지만 <strong>고정 비용도 그만큼 늘어난다</strong></li>
+            <li>IDF 도 샤드별로 계산되어 문서가 적으면 점수가 흔들린다 (<code>dfs_query_then_fetch</code>)</li>
+            <li>경험칙: 샤드 하나당 10~50GB, 노드 힙 1GB당 샤드 20개 이하</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h4 class="prose" style="margin-top:0">한국어는 analyzer 가 전부다</h4>
+        <div class="prose">
+          <p>영어는 공백으로 잘라도 그럭저럭 되지만 한국어는 조사가 붙어 있어 표준 토크나이저로는 “검색이”와 “검색을”이 다른 term 이 됩니다.</p>
+          <ul>
+            <li>형태소 분석기(nori, arirang)로 어간을 뽑아야 한다</li>
+            <li>동의어·불용어 사전은 <strong>색인·검색 양쪽</strong>에 같이 적용</li>
+            <li>사전을 바꾸면 기존 세그먼트는 그대로 → <strong>재색인</strong>이 필요하다</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout callout--accent mt6">
+      <span class="callout__t">세 페이지를 잇는 한 문장</span>
+      B+Tree 는 <strong>디스크 I/O 횟수</strong>를, 해시 테이블은 <strong>포인터 추적 횟수</strong>를, 역색인은
+      <strong>비교해야 할 문서 수</strong>를 줄이기 위해 만들어졌습니다.
+      자료구조는 항상 “무엇이 비싼가”라는 질문의 답입니다.
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-footer">
+  <div class="flex center gap3 wrap" style="justify-content:center">
+    <a href="../">← 다른 DB 보기</a>
+    <span class="muted">·</span>
+    <a href="../rdb/">RDB</a>
+    <span class="muted">·</span>
+    <a href="../redis/">Redis</a>
+  </div>
+  <p class="muted">DB Internals Visualized · vanilla JS</p>
+</footer>
+
+<script src="../assets/js/starfield.js"></script>
+<script src="../assets/js/es-index.js"></script>
+<script src="../assets/js/es-viz.js"></script>
+</body>
+</html>

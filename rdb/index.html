@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RDB — B-Tree / B+Tree 인덱스 시각화</title>
+  <meta name="description" content="키를 하나씩 삽입하며 B-Tree와 B+Tree가 분할되고 자라는 과정을 애니메이션으로 확인하고, 시간복잡도 log의 밑을 수학적으로 유도합니다." />
+
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌲</text></svg>" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../assets/css/base.css" />
+  <link rel="stylesheet" href="../assets/css/tree.css" />
+  <style>:root { --accent: var(--rdb); --accent-2: var(--rdb-mid); --accent-dim: var(--rdb-dim); --accent-border: var(--rdb-border); --accent-glow: var(--rdb-glow); }</style>
+</head>
+<body>
+
+<canvas class="star-field" id="starField" data-colors="#00d9c0,#3b82f6" aria-hidden="true"></canvas>
+
+<nav class="topbar">
+  <a class="topbar__home" href="../">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+      <line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline>
+    </svg>
+    Home
+  </a>
+  <div class="topbar__title">RDB <span class="sub">B-Tree / B+Tree</span></div>
+  <div class="topbar__spacer"></div>
+  <div class="topbar__links">
+    <a class="topbar__link topbar__link--active" href="#viz">시각화</a>
+    <a class="topbar__link" href="#compare">B-Tree vs B+Tree</a>
+    <a class="topbar__link" href="#complexity">시간복잡도</a>
+    <a class="topbar__link" href="#practice">실무 연결</a>
+  </div>
+</nav>
+
+<main class="page">
+
+  <header class="page-hero">
+    <div class="eyebrow"><span class="eyebrow__dot"></span><span>Relational Database · Index Structure</span></div>
+    <h1 class="page-title">디스크 위의 트리는<br /><span class="grad">이렇게 자란다</span></h1>
+    <p class="page-sub">
+      PostgreSQL의 <span class="mono acc">CREATE INDEX</span>, MySQL InnoDB의 클러스터드 인덱스는 모두 B-Tree 계열입니다.
+      키를 하나 넣을 때마다 노드가 어떻게 차오르고, 언제 쪼개지며, 트리가 언제 한 층 높아지는지를
+      직접 넣어보면서 확인하세요. 아래에서는 <strong>log의 밑이 왜 2가 아닌지</strong>를 수식으로 유도합니다.
+    </p>
+  </header>
+
+  <!-- ═══════════ 1. 인터랙티브 시각화 ═══════════ -->
+  <section class="section" id="viz">
+    <div class="section__head">
+      <div class="section__num">01 / VISUALIZE</div>
+      <h2 class="section__title">한 키씩 넣어보기</h2>
+      <p class="section__desc">
+        한 개의 상자 = 디스크 한 페이지입니다. 페이지가 담을 수 있는 키 개수를 넘기면 <span class="badge badge--warn">오버플로</span> 가 발생하고,
+        중앙 키가 부모로 올라가면서 노드가 둘로 갈라집니다. 부모까지 꽉 차면 그 위로 계속 전파되고,
+        루트가 갈라지는 순간에만 트리의 높이가 1 증가합니다.
+      </p>
+    </div>
+
+    <div class="viz">
+      <!-- 컨트롤 1 -->
+      <div class="viz__bar">
+        <div class="segmented" id="modeToggle" role="group" aria-label="트리 종류">
+          <button type="button" data-mode="bplus" aria-pressed="true">B+Tree</button>
+          <button type="button" data-mode="btree" aria-pressed="false">B-Tree</button>
+        </div>
+
+        <div class="viz__sep" aria-hidden="true"></div>
+
+        <label class="field">차수 m
+          <select class="select" id="orderSel" aria-label="트리 차수">
+            <option value="3">3</option>
+            <option value="4" selected>4</option>
+            <option value="5">5</option>
+            <option value="6">6</option>
+            <option value="8">8</option>
+          </select>
+        </label>
+        <span class="mono muted" id="orderInfo" style="font-size:11.5px"></span>
+
+        <div class="topbar__spacer"></div>
+
+        <label class="field">속도
+          <input type="range" id="speed" min="0.4" max="4" step="0.2" value="1.4" aria-label="애니메이션 속도" />
+          <span class="mono acc" id="speedVal">1.4×</span>
+        </label>
+      </div>
+
+      <!-- 컨트롤 2 -->
+      <div class="viz__bar">
+        <input class="input input--num" id="keyInput" type="text" placeholder="42" aria-label="키 값" style="width:120px" />
+        <button class="btn btn--primary" id="btnInsert" type="button">＋ 삽입</button>
+        <button class="btn" id="btnDelete" type="button">− 삭제</button>
+        <button class="btn" id="btnSearch" type="button">🔎 탐색</button>
+
+        <div class="viz__sep" aria-hidden="true"></div>
+
+        <button class="btn btn--sm" id="btnRandom" type="button">랜덤 1개</button>
+        <button class="btn btn--sm" id="btnRandom5" type="button">랜덤 5개</button>
+        <button class="btn btn--sm" id="btnSeed" type="button">예제 채우기</button>
+        <button class="btn btn--sm btn--danger" id="btnReset" type="button">초기화</button>
+
+        <div class="viz__sep" aria-hidden="true"></div>
+
+        <span data-bplus-only class="flex center gap2">
+          <span class="mono muted" style="font-size:11.5px">범위</span>
+          <input class="input input--num" id="rangeLo" type="number" value="20" aria-label="범위 시작" style="width:70px" />
+          <span class="muted">~</span>
+          <input class="input input--num" id="rangeHi" type="number" value="65" aria-label="범위 끝" style="width:70px" />
+          <button class="btn btn--sm" id="btnRange" type="button">범위 스캔 ▷</button>
+        </span>
+      </div>
+
+      <!-- 무대 -->
+      <div class="viz__stage" id="btStage">
+        <div class="viz__frame">
+          <div class="viz__world" id="btWorld">
+            <svg class="viz__edges" id="btEdges" aria-hidden="true"></svg>
+            <div id="btNodes"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 재생 컨트롤 -->
+      <div class="viz__bar" style="border-top:1px solid var(--bg-border); border-bottom:none">
+        <button class="btn btn--sm" id="btnPrev" type="button">◀ 이전</button>
+        <button class="btn btn--sm btn--primary" id="btnPlay" type="button">▶ 재생</button>
+        <button class="btn btn--sm" id="btnNext" type="button">다음 ▶</button>
+        <button class="btn btn--sm btn--ghost" id="btnEnd" type="button">끝으로 ⏭</button>
+      </div>
+
+      <!-- 내레이션 + 계측 -->
+      <div class="viz__foot">
+        <div class="viz__narration">
+          <div class="panel__label">현재 단계</div>
+          <div class="narr">
+            <span class="narr__kind" id="narrKind">idle</span>
+            <span id="narrMsg">준비 완료 — 값을 넣어보세요</span>
+          </div>
+          <div class="narr__progress">
+            <span id="progText">step 0 / 0</span>
+            <span class="narr__bar"><span class="narr__bar-fill" id="progFill"></span></span>
+          </div>
+        </div>
+
+        <div class="viz__counters">
+          <div class="panel__label">계측</div>
+          <div class="mini-stats">
+            <div><div class="mini-stat__k">높이 h</div><div class="mini-stat__v acc" id="stHeight">1</div></div>
+            <div><div class="mini-stat__k">노드(페이지)</div><div class="mini-stat__v" id="stNodes">1</div></div>
+            <div><div class="mini-stat__k">키 N</div><div class="mini-stat__v" id="stKeys">0</div></div>
+            <div><div class="mini-stat__k">페이지 읽기</div><div class="mini-stat__v" id="stReads">0</div></div>
+            <div><div class="mini-stat__k">키 비교</div><div class="mini-stat__v" id="stCmp">0</div></div>
+            <div><div class="mini-stat__k">분할/병합</div><div class="mini-stat__v" id="stSplits">0</div></div>
+          </div>
+          <div class="mono muted mt3" style="font-size:11px">
+            이론 높이 범위 · <span id="stBound">—</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="legend">
+        <span class="lg-active"><i></i>현재 방문 중인 페이지</span>
+        <span class="lg-over"><i></i>오버플로 / 분할</span>
+        <span class="lg-new"><i></i>새 노드 · 삽입된 키</span>
+        <span class="lg-under"><i></i>언더플로 / 병합</span>
+        <span class="muted">· 점선 = 리프 연결 리스트 (B+Tree)</span>
+      </div>
+    </div>
+
+    <div class="grid grid--3 mt6">
+      <div class="panel">
+        <div class="panel__label">해보기 ①</div>
+        <p class="prose" style="font-size:14px">
+          차수를 <code>3</code> 으로 낮추고 <strong>랜덤 5개</strong>를 몇 번 누르세요.
+          페이지가 작을수록 분할이 자주 일어나고 트리가 빠르게 높아집니다.
+          실제 DB가 페이지를 16KB로 크게 잡는 이유가 여기 있습니다.
+        </p>
+      </div>
+      <div class="panel">
+        <div class="panel__label">해보기 ②</div>
+        <p class="prose" style="font-size:14px">
+          <strong>1, 2, 3, 4, 5 …</strong> 를 순서대로 넣어보세요. 항상 가장 오른쪽 리프에서만 분할이 일어납니다.
+          <code>AUTO_INCREMENT</code> PK가 랜덤 UUID PK보다 유리한 이유가 이 모양입니다.
+        </p>
+      </div>
+      <div class="panel">
+        <div class="panel__label">해보기 ③</div>
+        <p class="prose" style="font-size:14px">
+          B+Tree에서 <strong>범위 스캔</strong>을 눌러보세요. 리프에 도달한 뒤로는 루트로 되돌아가지 않고
+          점선(연결 리스트)만 따라갑니다. B-Tree로 바꾸면 이 링크가 없습니다.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ 2. B-Tree vs B+Tree ═══════════ -->
+  <section class="section" id="compare">
+    <div class="section__head">
+      <div class="section__num">02 / COMPARE</div>
+      <h2 class="section__title">B-Tree와 B+Tree는 무엇이 다른가</h2>
+      <p class="section__desc">
+        위 시각화에서 모드를 바꾸면 바로 보입니다. B-Tree는 <strong>내부 노드에도 실제 데이터가 있고</strong>,
+        B+Tree는 <strong>데이터가 전부 리프에만</strong> 있으며 내부 노드의 키는 길 안내용 이정표(separator)일 뿐입니다.
+      </p>
+    </div>
+
+    <div class="panel panel--flush">
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead>
+            <tr><th style="width:170px">항목</th><th>B-Tree</th><th>B+Tree (실제 DB 인덱스)</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="mono">데이터 위치</td><td>내부 노드 + 리프 모두</td><td>리프에만</td></tr>
+            <tr><td class="mono">내부 노드 키</td><td>실제 키(값과 함께)</td><td>구분자(separator)만 — 값이 없다</td></tr>
+            <tr><td class="mono">한 페이지 fanout</td><td>키+값+포인터 → 작다</td><td>키+포인터만 → <strong>크다</strong> (높이가 낮아짐)</td></tr>
+            <tr><td class="mono">단건 조회</td><td>운 좋으면 루트에서 바로 끝</td><td>항상 리프까지 (대신 높이가 낮음)</td></tr>
+            <tr><td class="mono">범위 조회</td><td>중위 순회 — 위아래 왕복, 랜덤 I/O</td><td>리프 링크 순차 스캔 — <strong>O(log N + k/b)</strong></td></tr>
+            <tr><td class="mono">정렬 결과</td><td>순회 필요</td><td>리프 순서 = 정렬 순서 (ORDER BY 생략 가능)</td></tr>
+            <tr><td class="mono">분할 시 중앙 키</td><td>위로 <strong>이동</strong> (push-up, 리프에서 사라짐)</td><td>위로 <strong>복사</strong> (copy-up, 리프에도 남음)</td></tr>
+            <tr><td class="mono">쓰는 곳</td><td>일부 파일시스템, MongoDB WiredTiger 등</td><td>InnoDB, PostgreSQL, Oracle, SQL Server</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="grid grid--2 mt6">
+      <div class="panel">
+        <h4 class="prose" style="margin-top:0">왜 DB는 결국 B+Tree인가</h4>
+        <div class="prose">
+          <p>페이지 크기가 고정되어 있다면 <strong>한 페이지에 담긴 엔트리 수가 곧 fanout</strong>이고, fanout이 곧 log의 밑입니다.</p>
+          <ul>
+            <li>내부 노드에서 값(row)을 빼면 엔트리가 작아져 fanout이 몇 배로 커진다</li>
+            <li>fanout이 커지면 같은 N을 담아도 높이가 낮아진다 → 디스크 I/O 감소</li>
+            <li>리프를 링크드 리스트로 엮으면 범위 스캔이 순차 I/O가 된다</li>
+          </ul>
+          <p>즉 B+Tree는 “탐색을 빠르게” 만든 구조가 아니라 <strong>“디스크를 덜 만지게”</strong> 만든 구조입니다.</p>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h4 class="prose" style="margin-top:0">내부 노드의 키는 값이 아니다</h4>
+        <div class="prose">
+          <p>B+Tree에서 값을 지워도 내부 노드에 그 숫자가 남아 있는 경우가 있습니다. 위 시각화에서 직접 만들어볼 수 있습니다.</p>
+          <ul>
+            <li>내부 노드의 <code>42</code>는 “42 이상은 오른쪽”이라는 <strong>이정표</strong></li>
+            <li>실제 42가 삭제돼도 이정표는 그대로 둬도 탐색은 여전히 정확하다</li>
+            <li>탐색은 항상 리프까지 내려간 뒤에야 존재 여부를 판정한다</li>
+          </ul>
+          <p>이 성질 때문에 B+Tree의 삭제는 “리프만 정리하면 되는” 값싼 연산이 됩니다.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ 3. 시간복잡도 ═══════════ -->
+  <section class="section" id="complexity">
+    <div class="section__head">
+      <div class="section__num">03 / MATH</div>
+      <h2 class="section__title">log의 밑은 무엇이고, 왜 그런가</h2>
+      <p class="section__desc">
+        “B-Tree는 O(log N)” 이라는 말은 절반만 맞습니다. 중요한 건 <strong>밑(base)</strong>입니다.
+        밑이 2인지 500인지에 따라 실제 디스크 접근 횟수가 27번과 3번으로 갈립니다. 아래에서 상한과 하한을 직접 유도합니다.
+      </p>
+    </div>
+
+    <div class="panel">
+      <div class="panel__label">기호 정의</div>
+      <div class="prose">
+        <ul>
+          <li><code>m</code> — 한 노드(=한 페이지)가 가질 수 있는 <strong>최대 자식 수</strong>. 차수(order) 또는 fanout</li>
+          <li><code>t = ⌈m/2⌉</code> — 루트를 제외한 노드의 <strong>최소 자식 수</strong> (B-Tree의 균형 규칙)</li>
+          <li><code>N</code> — 인덱스에 저장된 키 개수</li>
+          <li><code>h</code> — 루트에서 리프까지의 <strong>레벨 수</strong>. 루트만 있으면 h = 1</li>
+        </ul>
+      </div>
+
+      <h4 class="prose">① 높이의 하한 — 가장 꽉 채웠을 때</h4>
+      <p class="prose">
+        모든 노드가 최대로 찼다고 가정합니다. 레벨 <code>i</code>(루트가 0)의 노드 수는 최대 <code>m^i</code>개이고,
+        각 노드는 최대 <code>m−1</code>개의 키를 가집니다. 따라서 높이 h인 트리가 담을 수 있는 키의 최대치는:
+      </p>
+      <div class="math"><span class="cm">// 등비수열의 합</span>
+N ≤ Σ<sub>i=0</sub><sup>h−1</sup> m<sup>i</sup> · (m−1)
+  = (m−1) · (m<sup>h</sup> − 1) / (m − 1)
+  = m<sup>h</sup> − 1
+
+<span class="cm">// 정리하면</span>
+m<sup>h</sup> ≥ N + 1
+<span class="hi">h ≥ log<sub>m</sub>(N + 1)</span></div>
+
+      <h4 class="prose">② 높이의 상한 — 가장 헐렁할 때</h4>
+      <p class="prose">
+        B-Tree 규칙상 루트를 제외한 모든 노드는 최소 <code>t = ⌈m/2⌉</code>개의 자식(= <code>t−1</code>개의 키)을 가져야 합니다.
+        루트는 최소 2개의 자식만 있으면 됩니다. 가장 적게 채운 트리를 세어보면:
+      </p>
+      <div class="math"><span class="cm">// 레벨 i(≥1)의 최소 노드 수: 2 · t^(i−1)</span>
+N ≥ 1 + Σ<sub>i=1</sub><sup>h−1</sup> 2·t<sup>i−1</sup>·(t−1)
+  = 1 + 2(t−1) · (t<sup>h−1</sup> − 1)/(t − 1)
+  = 2·t<sup>h−1</sup> − 1
+
+<span class="cm">// 정리하면</span>
+t<sup>h−1</sup> ≤ (N + 1) / 2
+<span class="hi">h ≤ log<sub>t</sub>( (N + 1) / 2 ) + 1</span></div>
+
+      <div class="callout callout--accent">
+        <span class="callout__t">결론</span>
+        <span class="mono">log<sub>m</sub>(N+1) ≤ h ≤ log<sub>⌈m/2⌉</sub>((N+1)/2) + 1</span> →
+        상한과 하한 모두 <strong>밑이 m 계열</strong>의 로그입니다. 즉 <span class="mono acc">h = Θ(log<sub>m</sub> N)</span>.
+        위 시각화의 “이론 높이 범위” 값이 바로 이 두 식이며, 실제 트리 높이가 항상 그 사이에 들어가는 것을 확인할 수 있습니다.
+      </div>
+
+      <h4 class="prose">③ 왜 밑이 2가 아니라 fanout인가 — 비용 모델의 문제</h4>
+      <div class="prose">
+        <p>알고리즘 교과서의 이진 트리는 “비교 1회”를 비용 단위로 삼습니다. 하지만 데이터베이스의 비용 단위는 <strong>디스크 I/O 1회</strong>입니다.</p>
+        <ul>
+          <li>디스크/SSD는 바이트가 아니라 <strong>블록(페이지) 단위</strong>로 읽는다 — 8바이트를 읽든 16KB를 읽든 I/O는 1회</li>
+          <li>그러므로 “한 번 읽을 때 최대한 많은 키를 가져오는 것”이 이득이다 → 노드 크기 = 페이지 크기</li>
+          <li>노드 하나에 키가 <code>m−1</code>개 들어가면 분기 수가 <code>m</code>이 되고, 트리 높이는 <code>log<sub>m</sub>N</code>이 된다</li>
+        </ul>
+        <p>밑 변환 공식을 쓰면 이진 트리와의 차이가 정확히 보입니다:</p>
+      </div>
+      <div class="math">log<sub>m</sub> N = log<sub>2</sub> N / log<sub>2</sub> m
+
+<span class="cm">// 즉 이진 탐색 트리보다 정확히 log₂(m) 배 낮다</span>
+m = 500  →  log<sub>2</sub>500 ≈ 8.97   <span class="cm">// 높이가 약 1/9</span>
+N = 10<sup>8</sup> 일 때
+  이진 트리 : log<sub>2</sub>10<sup>8</sup> ≈ <span class="hi">26.6 → 27회 I/O</span>
+  B+Tree   : log<sub>500</sub>10<sup>8</sup> = 26.6 / 8.97 ≈ <span class="hi">3.0 → 3회 I/O</span></div>
+
+      <h4 class="prose">④ 함정: CPU 비교 횟수는 줄어들지 않는다</h4>
+      <p class="prose">
+        노드 안의 키는 정렬된 배열이므로 이진 탐색을 합니다. 노드당 <code>log₂m</code>번 비교하고, 노드를 <code>log<sub>m</sub>N</code>개 방문하므로:
+      </p>
+      <div class="math">총 비교 횟수 = h × log<sub>2</sub>m
+            = log<sub>m</sub>N × log<sub>2</sub>m
+            = (log<sub>2</sub>N / log<sub>2</sub>m) × log<sub>2</sub>m
+            = <span class="hi">log<sub>2</sub>N</span>   <span class="cm">// 이진 트리와 동일!</span></div>
+      <p class="prose">
+        B-Tree는 <strong>비교 횟수를 줄이는 자료구조가 아니라 I/O 횟수를 줄이는 자료구조</strong>입니다.
+        그래서 모든 데이터가 이미 메모리에 있는 Redis 같은 시스템은 B-Tree를 쓸 이유가 없고, 해시 테이블을 씁니다.
+      </p>
+    </div>
+
+    <!-- 계산기 -->
+    <div class="panel mt6">
+      <div class="panel__label">인터랙티브 · 실제 fanout과 높이 계산</div>
+      <div class="calc">
+        <div class="calc__inputs">
+          <div class="calc__row"><label for="cPage">페이지 크기 (B)</label><input class="input" id="cPage" type="number" value="16384" /></div>
+          <div class="calc__row"><label for="cOverhead">페이지 헤더/푸터 (B)</label><input class="input" id="cOverhead" type="number" value="128" /></div>
+          <div class="calc__row"><label for="cFill">페이지 채움률 (%)</label><input class="input" id="cFill" type="number" value="69" /></div>
+          <div class="calc__row"><label for="cKey">키 크기 (B)</label><input class="input" id="cKey" type="number" value="8" /></div>
+          <div class="calc__row"><label for="cPtr">자식 포인터 (B)</label><input class="input" id="cPtr" type="number" value="6" /></div>
+          <div class="calc__row"><label for="cEntry">엔트리 오버헤드 (B)</label><input class="input" id="cEntry" type="number" value="7" /></div>
+          <div class="calc__row"><label for="cRow">리프 레코드 크기 (B)</label><input class="input" id="cRow" type="number" value="128" /></div>
+          <div class="calc__row"><label for="cRows">행 수 N</label><input class="input" id="cRows" type="number" value="100000000" /></div>
+          <div class="flex gap2 wrap mt2">
+            <button class="btn btn--sm" type="button" data-preset="innodb">InnoDB 16K</button>
+            <button class="btn btn--sm" type="button" data-preset="pg">PostgreSQL 8K</button>
+            <button class="btn btn--sm" type="button" data-preset="uuid">UUID PK</button>
+          </div>
+        </div>
+
+        <div class="calc__out">
+          <div class="stat-row">
+            <div class="stat stat--accent"><div class="stat__k">내부 fanout f</div><div class="stat__v" id="cFanout">—</div></div>
+            <div class="stat"><div class="stat__k">리프 엔트리 b</div><div class="stat__v" id="cLeafCap">—</div></div>
+            <div class="stat stat--accent"><div class="stat__k">트리 높이 h</div><div class="stat__v" id="cHeight">—</div></div>
+            <div class="stat"><div class="stat__k">단건 조회 I/O</div><div class="stat__v" id="cIO">—</div></div>
+          </div>
+
+          <div class="formula" id="cFormula"></div>
+
+          <div>
+            <div class="panel__label">레벨별 노드 수 (로그 스케일)</div>
+            <div class="level-bars" id="cLevels"></div>
+          </div>
+
+          <div class="callout" id="cCompare"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 연산별 복잡도 표 -->
+    <div class="panel panel--flush mt6">
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead>
+            <tr><th style="width:220px">연산</th><th style="width:200px">복잡도</th><th>왜</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="mono">단건 탐색</td><td class="mono acc">O(log<sub>f</sub> N)</td><td>루트→리프 한 경로만 읽는다. f = 페이지당 엔트리 수</td></tr>
+            <tr><td class="mono">삽입</td><td class="mono acc">O(log<sub>f</sub> N)</td><td>탐색 비용 + 분할. 분할은 amortized O(1)회 (아래 참고)</td></tr>
+            <tr><td class="mono">삭제</td><td class="mono acc">O(log<sub>f</sub> N)</td><td>탐색 비용 + 병합/재분배. 역시 amortized O(1)회</td></tr>
+            <tr><td class="mono">범위 스캔 (B+Tree)</td><td class="mono acc">O(log<sub>f</sub> N + k/b)</td><td>리프 진입 후 링크 순차 이동. b = 리프 페이지당 엔트리 수</td></tr>
+            <tr><td class="mono">범위 스캔 (B-Tree)</td><td class="mono">O(log<sub>f</sub> N + k) 랜덤</td><td>리프 링크가 없어 중위 순회로 부모를 다시 방문</td></tr>
+            <tr><td class="mono">전체 정렬 읽기</td><td class="mono acc">O(N/b)</td><td>B+Tree는 리프만 왼쪽→오른쪽으로 훑으면 이미 정렬 상태</td></tr>
+            <tr><td class="mono">노드 내부 탐색</td><td class="mono">O(log<sub>2</sub> m)</td><td>페이지 안은 정렬 배열 → 이진 탐색 (I/O 아님, CPU)</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="grid grid--2 mt6">
+      <div class="panel">
+        <h4 class="prose" style="margin-top:0">⑤ 분할 비용의 amortized 분석</h4>
+        <div class="prose">
+          <p>분할은 노드가 꽉 찼을 때만 일어납니다. 분할 직후 두 노드는 각각 약 <code>m/2</code>개의 키를 가지므로,
+          같은 노드가 다시 분할되려면 최소 <code>m/2</code>번의 삽입이 더 필요합니다.</p>
+        </div>
+        <div class="math">삽입당 평균 분할 횟수 ≤ 2/m = O(1/m)
+
+<span class="cm">// m = 500 이면 250번 삽입에 1번꼴</span>
+삽입 비용 = <span class="hi">O(log<sub>f</sub>N)</span> I/O + amortized <span class="hi">O(1)</span> 분할</div>
+        <p class="prose">그래서 “인덱스가 많으면 INSERT가 느려진다”의 주된 원인은 분할 자체보다 <strong>인덱스마다 별도의 루트→리프 경로를 갱신</strong>해야 하는 데 있습니다.</p>
+      </div>
+
+      <div class="panel">
+        <h4 class="prose" style="margin-top:0">⑥ 실제로는 I/O가 h번보다 적다</h4>
+        <div class="prose">
+          <p>상위 레벨은 노드 수가 적어 버퍼 풀(메모리)에 거의 항상 올라와 있습니다.</p>
+          <ul>
+            <li>루트 1개 — 사실상 100% 캐시 히트</li>
+            <li>레벨 1은 수천 개 — 수십 MB면 전부 캐시</li>
+            <li>리프만 수백만 개 — 여기서 실제 디스크 I/O 발생</li>
+          </ul>
+          <p>따라서 h = 4인 인덱스라도 <strong>실제 디스크 접근은 보통 1~2회</strong>입니다.
+          그래서 <code>innodb_buffer_pool_size</code> 튜닝이 인덱스 설계만큼 중요합니다.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ 4. 실무 ═══════════ -->
+  <section class="section" id="practice">
+    <div class="section__head">
+      <div class="section__num">04 / IN PRACTICE</div>
+      <h2 class="section__title">이 모양이 SQL로 드러나는 순간</h2>
+      <p class="section__desc">인덱스 규칙을 외우는 대신, 위에서 본 트리 모양으로 설명하면 전부 자명해집니다.</p>
+    </div>
+
+    <div class="grid grid--2">
+      <div class="panel">
+        <h4 class="prose" style="margin-top:0">LIKE 'abc%' 는 타고 '%abc' 는 못 탄다</h4>
+        <div class="prose">
+          <p>인덱스의 정렬 기준은 <strong>키의 맨 앞부터</strong>입니다. 내부 노드의 이정표는 “앞에서부터 비교했을 때 이쪽/저쪽”만 알려줍니다.</p>
+          <ul>
+            <li><code>'abc%'</code> — 시작점을 특정할 수 있다 → 리프 한 지점부터 순차 스캔</li>
+            <li><code>'%abc'</code> — 어느 리프에서 시작할지 알 수 없다 → 전체 스캔</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h4 class="prose" style="margin-top:0">복합 인덱스의 왼쪽 접두사 규칙</h4>
+        <div class="prose">
+          <p><code>INDEX(a, b, c)</code>는 <code>(a,b,c)</code> 튜플을 하나의 키로 정렬한 트리입니다.</p>
+          <ul>
+            <li><code>WHERE a=1 AND b=2</code> — a로 좁힌 뒤 그 안에서 b도 정렬돼 있다 → OK</li>
+            <li><code>WHERE b=2</code> — b는 a가 다른 구간마다 흩어져 있다 → 시작점 없음</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h4 class="prose" style="margin-top:0">랜덤 UUID를 PK로 쓰면 벌어지는 일</h4>
+        <div class="prose">
+          <p>위 시각화에서 랜덤 값을 계속 넣어보면 <strong>트리 곳곳에서 분할</strong>이 터집니다. InnoDB는 PK가 곧 데이터이므로(클러스터드) 이 분할은 데이터 페이지 분할입니다.</p>
+          <ul>
+            <li>페이지 분할 폭증 → 채움률 하락 → 같은 데이터에 더 많은 페이지</li>
+            <li>쓰기 지점이 흩어짐 → 버퍼 풀 히트율 하락</li>
+            <li>대안: <code>AUTO_INCREMENT</code>, ULID, UUIDv7 처럼 <strong>시간 정렬된 키</strong></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h4 class="prose" style="margin-top:0">커버링 인덱스가 빠른 이유</h4>
+        <div class="prose">
+          <p>세컨더리 인덱스의 리프에는 PK가 들어 있습니다. 필요한 컬럼이 인덱스에 없으면 <strong>PK로 클러스터드 인덱스를 다시 타야</strong> 합니다 (bookmark lookup).</p>
+          <ul>
+            <li>일반: 세컨더리 h회 + 클러스터드 h회 × 결과 행 수</li>
+            <li>커버링: 세컨더리 h회 + 리프 순차 스캔으로 끝</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout callout--accent mt6">
+      <span class="callout__t">한 줄 요약</span>
+      B+Tree의 시간복잡도는 <span class="mono">O(log<sub>f</sub> N)</span>이고, 여기서 <strong>f는 페이지 하나에 들어가는 엔트리 수</strong>입니다.
+      인덱스 튜닝의 대부분은 결국 “f를 키우고 h를 줄이는 일” — 즉 <strong>키를 짧게, 페이지를 꽉 차게, 삽입을 한쪽 끝으로</strong> 몰아주는 일입니다.
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-footer">
+  <div class="flex center gap3 wrap" style="justify-content:center">
+    <a href="../">← 다른 DB 보기</a>
+    <span class="muted">·</span>
+    <a href="../redis/">Redis</a>
+    <span class="muted">·</span>
+    <a href="../elasticsearch/">Elasticsearch</a>
+  </div>
+  <p class="muted">DB Internals Visualized · vanilla JS</p>
+</footer>
+
+<script src="../assets/js/starfield.js"></script>
+<script src="../assets/js/btree.js"></script>
+<script src="../assets/js/btree-viz.js"></script>
+<script src="../assets/js/complexity.js"></script>
+</body>
+</html>

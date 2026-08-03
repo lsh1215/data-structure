@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Redis — dict · hashtable · 점진적 리해싱 시각화</title>
+  <meta name="description" content="SET 명령 하나가 RESP 파싱부터 해시 계산, 버킷 인덱스, dictEntry 체인 삽입, 점진적 리해싱까지 어떤 과정을 거치는지 애니메이션으로 확인합니다." />
+
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../assets/css/base.css" />
+  <link rel="stylesheet" href="../assets/css/tree.css" />
+  <link rel="stylesheet" href="../assets/css/redis.css" />
+  <style>:root { --accent: var(--redis); --accent-2: var(--redis-mid); --accent-dim: var(--redis-dim); --accent-border: var(--redis-border); --accent-glow: var(--redis-glow); }</style>
+</head>
+<body>
+
+<canvas class="star-field" id="starField" data-colors="#ff5470,#ff8a5b" aria-hidden="true"></canvas>
+
+<nav class="topbar">
+  <a class="topbar__home" href="../">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+      <line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline>
+    </svg>
+    Home
+  </a>
+  <div class="topbar__title">Redis <span class="sub">dict · hashtable · skiplist</span></div>
+  <div class="topbar__spacer"></div>
+  <div class="topbar__links">
+    <a class="topbar__link topbar__link--active" href="#viz">명령의 여정</a>
+    <a class="topbar__link" href="#struct">dict 해부</a>
+    <a class="topbar__link" href="#rehash">점진적 리해싱</a>
+    <a class="topbar__link" href="#skiplist">ZSET skiplist</a>
+    <a class="topbar__link" href="#encoding">인코딩</a>
+  </div>
+</nav>
+
+<main class="page">
+
+  <header class="page-hero">
+    <div class="eyebrow"><span class="eyebrow__dot"></span><span>In-Memory Database · Hash Table</span></div>
+    <h1 class="page-title">SET 한 줄이<br /><span class="grad">메모리에 앉기까지</span></h1>
+    <p class="page-sub">
+      <span class="mono acc">SET user:1 sanghun</span> 을 보내면 Redis 안에서는
+      RESP 파싱 → 명령 테이블 조회 → 해시 계산 → 버킷 인덱스 → dictEntry 체인 삽입 → load factor 검사가
+      순서대로 일어납니다. 각 단계를 한 스텝씩 멈춰가며 확인하세요.
+    </p>
+  </header>
+
+  <!-- ═══════════ 1. 명령 파이프라인 + 해시 테이블 ═══════════ -->
+  <section class="section" id="viz">
+    <div class="section__head">
+      <div class="section__num">01 / VISUALIZE</div>
+      <h2 class="section__title">명령 하나의 전체 경로</h2>
+      <p class="section__desc">
+        위쪽 파이프라인은 명령이 지나는 단계, 아래는 실제 해시 테이블입니다.
+        <span class="badge">bucket</span> 은 포인터 배열의 한 칸이고, 그 아래 매달린 카드가 <span class="badge">dictEntry</span> 입니다.
+        같은 버킷에 여러 개가 매달리면 그것이 <strong>충돌(collision)</strong>이며, 새 엔트리는 항상 <strong>체인의 맨 앞</strong>에 들어갑니다.
+      </p>
+    </div>
+
+    <div class="viz">
+      <div class="pipe" id="pipe"></div>
+
+      <div class="viz__bar">
+        <input class="input" id="rCmd" type="text" placeholder="SET user:9 hello" style="min-width:250px;flex:1" aria-label="Redis 명령" />
+        <button class="btn btn--primary" id="rRun" type="button">실행 ▷</button>
+        <div class="viz__sep" aria-hidden="true"></div>
+        <button class="btn btn--sm" id="rSet" type="button">SET 1개</button>
+        <button class="btn btn--sm" id="rSet5" type="button">SET 5개</button>
+        <button class="btn btn--sm" id="rGet" type="button">GET</button>
+        <button class="btn btn--sm" id="rDel" type="button">DEL</button>
+        <div class="viz__sep" aria-hidden="true"></div>
+        <button class="btn btn--sm" id="rFinish" type="button">리해싱 끝내기 ⏭</button>
+        <label class="field" style="cursor:pointer">
+          <input type="checkbox" id="rBgsave" /> BGSAVE 중
+        </label>
+        <button class="btn btn--sm btn--danger" id="rReset" type="button">초기화</button>
+      </div>
+
+      <div class="htab-stage" id="htStage">
+        <div class="htab-frame">
+          <div class="htab-world" id="htWorld"></div>
+        </div>
+      </div>
+
+      <div class="viz__bar">
+        <button class="btn btn--sm" id="rPrev" type="button">◀ 이전</button>
+        <button class="btn btn--sm btn--primary" id="rPlay" type="button">▶ 재생</button>
+        <button class="btn btn--sm" id="rNext" type="button">다음 ▶</button>
+        <span class="mono muted" id="rStep" style="font-size:11px">step 0 / 0</span>
+        <span class="narr__bar" style="max-width:180px"><span class="narr__bar-fill" id="rBar"></span></span>
+        <div class="topbar__spacer"></div>
+        <label class="field">속도
+          <input type="range" id="rSpeed" min="0.4" max="4" step="0.2" value="1.4" aria-label="속도" />
+          <span class="mono acc" id="rSpeedVal">1.4×</span>
+        </label>
+      </div>
+
+      <div class="viz__foot">
+        <div class="viz__narration">
+          <div class="panel__label">현재 단계</div>
+          <div class="narr"><span class="narr__kind" id="rKind">idle</span><span id="rMsg">명령을 실행해 보세요</span></div>
+          <div class="hashbox mt3" id="rDetail">—</div>
+        </div>
+        <div class="viz__counters">
+          <div class="panel__label">dict 상태</div>
+          <div class="mini-stats">
+            <div><div class="mini-stat__k">ht[0] size</div><div class="mini-stat__v acc" id="rSize">4</div></div>
+            <div><div class="mini-stat__k">used</div><div class="mini-stat__v" id="rUsed">0</div></div>
+            <div><div class="mini-stat__k">load factor</div><div class="mini-stat__v" id="rLoad">0.00</div></div>
+            <div><div class="mini-stat__k">ht[1] size</div><div class="mini-stat__v" id="rHt1">—</div></div>
+            <div><div class="mini-stat__k">rehashidx</div><div class="mini-stat__v" id="rIdx">—</div></div>
+            <div><div class="mini-stat__k">충돌 발생</div><div class="mini-stat__v" id="rColl">0</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="legend">
+        <span class="lg-active"><i></i>현재 접근 중인 버킷 / 엔트리</span>
+        <span class="lg-over"><i></i>리해싱으로 이주 중</span>
+        <span class="lg-new"><i></i>새로 삽입된 dictEntry</span>
+        <span class="muted">· 점선 테두리 버킷 = 이미 ht[1] 로 옮겨진 버킷</span>
+      </div>
+    </div>
+
+    <div class="grid grid--3 mt6">
+      <div class="panel">
+        <div class="panel__label">해보기 ①</div>
+        <p class="prose" style="font-size:14px"><strong>SET 5개</strong>를 두 번 누르세요. used 가 size 에 닿는 순간
+        <code>ht[1]</code> 이 나타나고 <code>rehashidx</code> 가 0부터 올라가기 시작합니다.</p>
+      </div>
+      <div class="panel">
+        <div class="panel__label">해보기 ②</div>
+        <p class="prose" style="font-size:14px">리해싱 중에 <strong>GET</strong>을 눌러보세요.
+        <code>ht[0]</code>에서 못 찾으면 <code>ht[1]</code>까지 확인하는 걸 볼 수 있습니다. 인덱스가 서로 다릅니다.</p>
+      </div>
+      <div class="panel">
+        <div class="panel__label">해보기 ③</div>
+        <p class="prose" style="font-size:14px"><strong>BGSAVE 중</strong>을 켠 뒤 계속 넣어보세요.
+        load factor 가 1을 넘어도 확장을 미룹니다. fork 된 자식과 메모리를 공유 중이기 때문입니다.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ 2. 구조체 해부 ═══════════ -->
+  <section class="section" id="struct">
+    <div class="section__head">
+      <div class="section__num">02 / ANATOMY</div>
+      <h2 class="section__title">dict · dictht · dictEntry</h2>
+      <p class="section__desc">
+        위 그림의 각 요소가 실제 C 구조체의 어느 필드인지 짚어봅니다. 이름만 알면 소스를 열었을 때 길을 잃지 않습니다.
+      </p>
+    </div>
+
+    <div class="grid grid--2">
+      <div class="panel">
+        <div class="panel__label">구조체 (Redis 6 기준)</div>
+        <div class="math" style="line-height:1.8">typedef struct <span class="hi">dictEntry</span> {
+    void *key;              <span class="cm">// SDS 문자열 포인터</span>
+    union {
+        void *val;          <span class="cm">// robj 포인터</span>
+        uint64_t u64;
+        int64_t  s64;
+        double   d;
+    } v;
+    struct dictEntry *next; <span class="cm">// 같은 버킷의 다음 엔트리</span>
+} dictEntry;                <span class="cm">// 64bit 에서 24 bytes</span>
+
+typedef struct <span class="hi">dictht</span> {
+    dictEntry **table;      <span class="cm">// 버킷 배열 (포인터의 배열)</span>
+    unsigned long size;     <span class="cm">// 항상 2의 거듭제곱</span>
+    unsigned long sizemask; <span class="cm">// size - 1</span>
+    unsigned long used;     <span class="cm">// 저장된 엔트리 수</span>
+} dictht;
+
+typedef struct <span class="hi">dict</span> {
+    dictType *type;
+    <span class="hi">dictht ht[2];</span>           <span class="cm">// [0]=현재, [1]=리해싱 대상</span>
+    <span class="hi">long rehashidx;</span>         <span class="cm">// -1 이면 리해싱 중 아님</span>
+    int16_t pauserehash;
+} dict;</div>
+        <p class="prose" style="font-size:13.5px">
+          Redis 7 부터는 <code>dictht</code> 구조체가 사라지고 <code>dict</code> 안에
+          <code>dictEntry **ht_table[2]</code>, <code>ht_used[2]</code>, <code>ht_size_exp[2]</code> 로 평탄화되었습니다.
+          개념은 그대로입니다.
+        </p>
+      </div>
+
+      <div class="panel">
+        <h4 class="prose" style="margin-top:0">왜 size 는 항상 2의 거듭제곱인가</h4>
+        <div class="prose">
+          <p>버킷 인덱스를 구할 때 나눗셈(<code>%</code>)은 CPU에서 수십 사이클이 드는 비싼 연산입니다.
+          크기가 2ⁿ이면 <code>sizemask = size − 1</code> 이 <code>0b0111…1</code> 형태가 되어 비트 AND 한 번으로 끝납니다.</p>
+        </div>
+        <div class="math">size     = 16      = 0b00010000
+sizemask = 16 − 1  = 0b00001111
+
+hash     = 0x3f2a1b9c
+idx      = hash & sizemask
+         = ...1001<span class="hi">1100</span> & 0b1111
+         = <span class="hi">12</span>          <span class="cm">// 하위 4비트만 남는다</span></div>
+        <div class="prose">
+          <p>덤으로, 크기를 2배로 늘리면 각 엔트리는 <strong>제자리에 남거나 정확히 size 만큼 뒤로</strong> 이동합니다.
+          비트 하나가 더 보이게 되는 것뿐이기 때문입니다. 리해싱이 예측 가능한 이유입니다.</p>
+          <ul>
+            <li>해시가 균등하다면 체인 평균 길이 = load factor</li>
+            <li>load factor 를 1 근처로 유지 → 평균 O(1)</li>
+            <li>최악은 모든 키가 한 버킷 → O(N). 그래서 <strong>SipHash + 랜덤 시드</strong>로 해시 충돌 공격을 막는다</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel mt6">
+      <div class="panel__label">한 눈에 대응</div>
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr><th style="width:190px">화면의 요소</th><th style="width:220px">C 구조체</th><th>하는 일</th></tr></thead>
+          <tbody>
+            <tr><td>버킷 한 칸 <span class="mono muted">[3]</span></td><td class="mono">dictEntry *table[3]</td><td>엔트리 체인의 머리를 가리키는 포인터. 비어 있으면 NULL</td></tr>
+            <tr><td>카드 하나</td><td class="mono">dictEntry</td><td>key 포인터 + value 유니온 + next 포인터. 24바이트</td></tr>
+            <tr><td>카드 위 화살표</td><td class="mono">entry-&gt;next</td><td>같은 버킷에 걸린 다음 엔트리. 단일 연결 리스트</td></tr>
+            <tr><td>ht[0] / ht[1]</td><td class="mono">dict.ht[2]</td><td>리해싱 중에만 둘 다 존재. 평소에는 ht[0] 하나</td></tr>
+            <tr><td>rehashidx 커서</td><td class="mono">dict.rehashidx</td><td>다음에 옮길 ht[0] 버킷 번호. −1 이면 리해싱 중 아님</td></tr>
+            <tr><td>load factor</td><td class="mono">used / size</td><td>1 이상이면 확장 검토, 0.1 미만이면 축소 검토</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ 3. 점진적 리해싱 ═══════════ -->
+  <section class="section" id="rehash">
+    <div class="section__head">
+      <div class="section__num">03 / REHASH</div>
+      <h2 class="section__title">왜 한 번에 옮기지 않는가</h2>
+      <p class="section__desc">
+        Redis 는 명령을 <strong>한 스레드</strong>로 처리합니다. 1000만 개의 키를 새 테이블로 한 번에 복사하면
+        그 몇 초 동안 서버 전체가 멈춥니다. 그래서 이사를 <strong>한 버킷씩 나눠서</strong> 합니다.
+      </p>
+    </div>
+
+    <div class="grid grid--2">
+      <div class="panel">
+        <h4 class="prose" style="margin-top:0">이사 규칙 4가지</h4>
+        <div class="prose">
+          <ul>
+            <li><strong>조회는 두 테이블 모두</strong> — ht[0] 에 없으면 ht[1] 도 본다</li>
+            <li><strong>삽입은 ht[1] 에만</strong> — 그래야 ht[0] 이 단조 감소해서 언젠가 끝난다</li>
+            <li><strong>rehashidx 앞쪽 버킷은 이미 비어 있다</strong> — 그 구간은 볼 필요가 없다</li>
+            <li><strong>ht[0].used 가 0 이 되면</strong> ht[0] 을 해제하고 ht[1] 을 ht[0] 으로 승격</li>
+          </ul>
+        </div>
+        <div class="math">dictRehashStep(d)   <span class="cm">// 명령이 올 때마다 1 버킷</span>
+  ├ dictAddRaw()
+  ├ dictFind()
+  └ dictDelete()
+
+databasesCron()     <span class="cm">// 유휴 시간에 1ms 동안</span>
+  └ incrementallyRehash()</div>
+        <p class="prose" style="font-size:13.5px">
+          빈 버킷만 계속 나오는 경우를 대비해 <strong>한 번에 최대 n×10 개의 빈 버킷</strong>만 건너뛰고 중단합니다.
+          어떤 명령도 리해싱 때문에 오래 붙잡히지 않게 하는 장치입니다.
+        </p>
+      </div>
+
+      <div class="panel">
+        <h4 class="prose" style="margin-top:0">BGSAVE 중에는 왜 확장을 미루는가</h4>
+        <div class="prose">
+          <p>RDB 저장이나 AOF 재작성은 <code>fork()</code> 로 자식 프로세스를 만듭니다.
+          부모와 자식은 물리 메모리를 <strong>공유(Copy-on-Write)</strong>하다가, 부모가 페이지를 수정하는 순간에만 복사합니다.</p>
+          <ul>
+            <li>리해싱은 모든 엔트리를 건드린다 → 거의 모든 페이지가 복사된다</li>
+            <li>메모리 사용량이 순간적으로 2배로 튄다 → OOM 위험</li>
+            <li>그래서 <code>dict_can_resize = 0</code> 으로 확장을 미룬다</li>
+            <li>단, load factor 가 <code>dict_force_resize_ratio(5)</code> 를 넘으면 체인이 너무 길어지므로 강제 확장</li>
+          </ul>
+          <p>위 시각화에서 <strong>BGSAVE 중</strong> 체크박스를 켜고 계속 넣어보면 이 규칙이 그대로 재현됩니다.</p>
+        </div>
+        <div class="callout callout--accent">
+          <span class="callout__t">SCAN 이 안전한 이유도 여기 있다</span>
+          리해싱 중에는 커서를 그냥 0,1,2… 로 늘리면 엔트리를 빠뜨리거나 중복해서 보게 됩니다.
+          Redis 의 SCAN 은 커서를 <strong>비트를 거꾸로 뒤집어 증가(reverse binary iteration)</strong>시켜,
+          테이블 크기가 바뀌어도 이미 본 원소는 다시 안 보고 처음부터 있던 원소는 반드시 보게 만듭니다.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ 4. Skiplist ═══════════ -->
+  <section class="section" id="skiplist">
+    <div class="section__head">
+      <div class="section__num">04 / SKIPLIST</div>
+      <h2 class="section__title">ZSET 은 왜 트리가 아니라 skiplist 인가</h2>
+      <p class="section__desc">
+        정렬이 필요한 ZSET 은 해시로 안 됩니다. 그렇다고 균형 트리(red-black, AVL)를 쓰지도 않습니다.
+        Redis 는 <strong>동전을 던져 층을 정하는</strong> skiplist 를 씁니다. 회전(rotation)이 없어 코드가 짧고, 범위 질의가 쉽기 때문입니다.
+      </p>
+    </div>
+
+    <div class="viz">
+      <div class="viz__bar">
+        <input class="input" id="slInput" type="text" placeholder="30 eve  (score member)" style="min-width:190px" aria-label="score member" />
+        <button class="btn btn--primary" id="slAdd" type="button">ZADD ＋</button>
+        <button class="btn btn--sm" id="slFind" type="button">🔎 탐색</button>
+        <button class="btn btn--sm" id="slDel" type="button">랜덤 삭제</button>
+        <button class="btn btn--sm btn--danger" id="slReset" type="button">초기화</button>
+        <div class="topbar__spacer"></div>
+        <button class="btn btn--sm" id="slPrev" type="button">◀</button>
+        <button class="btn btn--sm btn--primary" id="slPlay" type="button">▶ 재생</button>
+        <button class="btn btn--sm" id="slNext" type="button">▶</button>
+        <span class="mono muted" id="slStep" style="font-size:11px">step 0 / 0</span>
+        <input type="range" id="slSpeed" min="0.4" max="4" step="0.2" value="1.6" aria-label="속도" />
+      </div>
+
+      <div class="sl-stage" id="slStage">
+        <div style="position:relative;width:100%">
+          <div class="sl-world" id="slWorld"></div>
+        </div>
+      </div>
+
+      <div class="viz__foot">
+        <div class="viz__narration">
+          <div class="panel__label">현재 단계</div>
+          <div class="narr"><span class="narr__kind" id="slKind">idle</span><span id="slMsg">ZADD 로 원소를 넣어보세요</span></div>
+          <div class="hashbox mt3" id="slDetail" style="min-height:80px">—</div>
+        </div>
+        <div class="viz__counters">
+          <div class="panel__label">skiplist 상태</div>
+          <div class="mini-stats">
+            <div><div class="mini-stat__k">원소 수</div><div class="mini-stat__v acc" id="slLen">0</div></div>
+            <div><div class="mini-stat__k">최대 레벨</div><div class="mini-stat__v" id="slLevel">1</div></div>
+            <div><div class="mini-stat__k">총 포인터</div><div class="mini-stat__v" id="slPtr">0</div></div>
+          </div>
+          <div class="panel__label mt4">레벨 추첨 결과</div>
+          <div class="dice" id="slDice"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid grid--2 mt6">
+      <div class="panel">
+        <h4 class="prose" style="margin-top:0">레벨은 확률로 정해진다</h4>
+        <div class="math">int zslRandomLevel(void) {
+    int level = 1;
+    while (random() &lt; <span class="hi">0.25</span> && level &lt; 32)
+        level += 1;
+    return level;
+}</div>
+        <div class="prose">
+          <ul>
+            <li>레벨 L 이 될 확률 = <code>0.25^(L−1) × 0.75</code></li>
+            <li>75%는 레벨 1, 약 19%는 레벨 2, 약 4.7%는 레벨 3…</li>
+            <li>평균 레벨 = <code>1/(1−p) = 1.33</code> → 노드당 포인터 1.33개</li>
+            <li>기대 탐색 비용 = <code>O(log<sub>1/p</sub> N) = O(log₄ N)</code></li>
+          </ul>
+          <p>회전도, 재균형도 없습니다. 그냥 동전을 던지고 연결 리스트에 끼워 넣을 뿐인데 기대값으로 균형이 잡힙니다.</p>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h4 class="prose" style="margin-top:0">span 이 있어서 ZRANK 가 빠르다</h4>
+        <div class="prose">
+          <p>각 forward 포인터에는 <strong>몇 칸을 건너뛰는지</strong>(span)가 함께 저장됩니다.
+          위 그림의 각 셀에 적힌 숫자가 그것입니다.</p>
+          <ul>
+            <li>탐색하며 span 을 더하면 그 원소가 <strong>몇 번째인지</strong> 바로 나온다 → <code>ZRANK O(log N)</code></li>
+            <li>순위로 자르기도 가능 → <code>ZRANGE key 0 9</code> 가 빠른 이유</li>
+            <li>ZSET 은 skiplist <strong>+ dict</strong> 두 개를 같이 유지한다 → <code>ZSCORE</code> 는 dict 로 O(1)</li>
+          </ul>
+          <p>즉 ZSET 하나는 “정렬을 위한 skiplist”와 “멤버→점수 조회를 위한 해시” 두 자료구조의 합성입니다. 메모리를 더 쓰는 대신 두 종류의 질의를 모두 빠르게 만듭니다.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ 5. 인코딩 ═══════════ -->
+  <section class="section" id="encoding">
+    <div class="section__head">
+      <div class="section__num">05 / ENCODING</div>
+      <h2 class="section__title">작을 때는 해시를 쓰지 않는다</h2>
+      <p class="section__desc">
+        원소가 몇 개 안 되면 Redis 는 해시 테이블 대신 <strong>연속된 바이트 배열</strong>(listpack)에 그냥 쭉 저장하고 선형 탐색합니다.
+        O(N)이 O(1)보다 빠른 구간이 실제로 존재하기 때문입니다 — 캐시 때문입니다.
+      </p>
+    </div>
+
+    <div class="panel panel--flush">
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr><th style="width:110px">타입</th><th style="width:170px">작을 때</th><th style="width:190px">커지면</th><th>전환 임계값 (기본값)</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">string</td><td>int / embstr</td><td>raw (SDS)</td><td class="mono">44 bytes 초과 시 raw · 정수면 int</td></tr>
+            <tr><td class="mono">hash</td><td>listpack</td><td>hashtable (dict)</td><td class="mono">hash-max-listpack-entries 128 / value 64B</td></tr>
+            <tr><td class="mono">list</td><td>listpack</td><td>quicklist</td><td class="mono">list-max-listpack-size 128</td></tr>
+            <tr><td class="mono">set</td><td>intset / listpack</td><td>hashtable (dict)</td><td class="mono">set-max-intset-entries 512</td></tr>
+            <tr><td class="mono">zset</td><td>listpack</td><td>skiplist + dict</td><td class="mono">zset-max-listpack-entries 128 / value 64B</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="grid grid--2 mt6">
+      <div class="panel">
+        <h4 class="prose" style="margin-top:0">O(N)이 O(1)을 이기는 구간</h4>
+        <div class="prose">
+          <ul>
+            <li>listpack 은 <strong>연속 메모리</strong> — 캐시 라인 한두 번이면 다 읽는다</li>
+            <li>dict 는 해시 계산 + 포인터 추적 → <strong>캐시 미스</strong>가 발생한다</li>
+            <li>원소 128개 정도까지는 그냥 훑는 게 더 빠르고, 메모리도 훨씬 적게 쓴다</li>
+          </ul>
+          <p>그래서 “작은 해시를 많이” 쓰는 패턴(<code>user:1</code> 필드 5개짜리 해시 100만 개)은
+          메모리 효율이 아주 좋습니다. 임계값을 넘기면 갑자기 메모리가 몇 배로 뜁니다.</p>
+        </div>
+      </div>
+      <div class="panel">
+        <h4 class="prose" style="margin-top:0">한 번 커지면 되돌아가지 않는다</h4>
+        <div class="prose">
+          <p>listpack → hashtable 전환은 <strong>단방향</strong>입니다. 원소를 다시 지워도 인코딩은 그대로 hashtable 로 남습니다.</p>
+          <ul>
+            <li>매번 되돌리는 비용이 크고, 경계에서 진동(thrashing)이 생기기 때문</li>
+            <li>확인: <code>OBJECT ENCODING key</code></li>
+            <li>메모리를 되찾으려면 키를 새로 만들어야 한다</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel panel--flush mt6">
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr><th style="width:200px">명령</th><th style="width:170px">복잡도</th><th>이유</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">SET / GET / DEL</td><td class="mono acc">O(1) 평균</td><td>해시 → 버킷 → 짧은 체인. load factor 를 1 근처로 유지하기 때문</td></tr>
+            <tr><td class="mono">HSET / HGET</td><td class="mono acc">O(1)</td><td>hashtable 인코딩일 때. listpack 이면 O(N)이지만 N이 작다</td></tr>
+            <tr><td class="mono">LPUSH / RPUSH</td><td class="mono acc">O(1)</td><td>quicklist 양 끝 노드에 바로 추가</td></tr>
+            <tr><td class="mono">ZADD / ZSCORE</td><td class="mono acc">O(log N) / O(1)</td><td>skiplist 삽입은 log, 점수 조회는 함께 유지되는 dict 로 O(1)</td></tr>
+            <tr><td class="mono">ZRANGE key a b</td><td class="mono acc">O(log N + M)</td><td>진입점을 log 에 찾고 레벨 1 링크를 M개 따라간다</td></tr>
+            <tr><td class="mono">SCAN</td><td class="mono">O(1) per call</td><td>커서 기반. 리해싱 중에도 안전하도록 역방향 비트 증가</td></tr>
+            <tr><td class="mono">KEYS *</td><td class="mono" style="color:var(--hot)">O(N) — 운영 금지</td><td>단일 스레드를 통째로 점유한다. SCAN 을 쓸 것</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="callout callout--accent mt6">
+      <span class="callout__t">RDB 페이지와 이어서 보기</span>
+      B+Tree 는 <strong>디스크 I/O 횟수</strong>를 줄이려고 한 노드에 키를 몰아넣어 <span class="mono">O(log<sub>f</sub>N)</span> 을 만듭니다.
+      Redis 는 애초에 모든 데이터가 메모리에 있으므로 I/O 최적화가 필요 없고, 대신 <strong>포인터 한 번 따라가면 끝나는</strong>
+      해시 테이블로 <span class="mono">O(1)</span> 을 얻습니다. 비용 모델이 다르면 최적의 자료구조도 달라집니다.
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-footer">
+  <div class="flex center gap3 wrap" style="justify-content:center">
+    <a href="../">← 다른 DB 보기</a>
+    <span class="muted">·</span>
+    <a href="../rdb/">RDB</a>
+    <span class="muted">·</span>
+    <a href="../elasticsearch/">Elasticsearch</a>
+  </div>
+  <p class="muted">DB Internals Visualized · vanilla JS</p>
+</footer>
+
+<script src="../assets/js/starfield.js"></script>
+<script src="../assets/js/redis-dict.js"></script>
+<script src="../assets/js/redis-viz.js"></script>
+<script src="../assets/js/skiplist.js"></script>
+<script src="../assets/js/skiplist-viz.js"></script>
+</body>
+</html>
