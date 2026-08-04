@@ -54,11 +54,27 @@ for (const file of htmlFiles) {
     return `${attr}="${url}?v=${hashOf(target)}"`;
   });
 
-  /* 이 문서가 어느 빌드인지 표시 */
+  /* 이 문서가 어느 빌드인지 표시. 이게 빠지면 클라이언트가 옛 캐시본을
+     감지할 수 없으므로 조용히 넘어가지 않고 배포를 실패시킨다. */
+  if (!/<html\b[^>]*>/.test(src)) {
+    console.error(`no <html> tag to stamp: ${path.relative(ROOT, file)}`);
+    process.exitCode = 1;
+    continue;
+  }
   src = src.replace(/<html\b[^>]*>/, `<html lang="ko" data-build="${BUILD}">`);
 
   fs.writeFileSync(file, src);
+  if (!/<html[^>]*\bdata-build=/.test(fs.readFileSync(file, 'utf8'))) {
+    console.error(`stamp verification failed: ${path.relative(ROOT, file)}`);
+    process.exitCode = 1;
+  }
 }
+
+if (!htmlFiles.length) {
+  console.error('no html files found — 배포 아티팩트가 비어 있다');
+  process.exitCode = 1;
+}
+if (process.exitCode) process.exit(process.exitCode);
 
 fs.writeFileSync(
   path.join(ROOT, 'version.json'),
