@@ -28,7 +28,8 @@
   <div class="topbar__title">RDB <span class="sub">B-Tree / B+Tree</span></div>
   <div class="topbar__spacer"></div>
   <div class="topbar__links">
-    <a class="topbar__link topbar__link--active" href="#viz">시각화</a>
+    <a class="topbar__link topbar__link--active" href="#terms">용어</a>
+    <a class="topbar__link" href="#viz">시각화</a>
     <a class="topbar__link" href="#compare">B-Tree vs B+Tree</a>
     <a class="topbar__link" href="#complexity">시간복잡도</a>
     <a class="topbar__link" href="#practice">실무 연결</a>
@@ -47,10 +48,147 @@
     </p>
   </header>
 
+  <!-- ═══════════ 0. 용어 ═══════════ -->
+  <section class="section" id="terms" style="margin-top:var(--sp-10)">
+    <div class="section__head">
+      <div class="section__num">01 / 용어부터</div>
+      <h2 class="section__title">먼저 이 그림의 이름들</h2>
+      <p class="section__desc">
+        아래 시각화는 계속 <strong>노드 · 키 · 포인터 · 차수 m · 높이 h</strong> 라는 말을 씁니다.
+        처음 보는 단어라면 여기서 딱 한 번만 짚고 넘어가면 됩니다. 그림 하나면 끝납니다.
+      </p>
+    </div>
+
+    <div class="panel">
+      <div class="anatomy-wrap">
+      <svg class="anatomy" viewBox="0 0 940 372" role="img" aria-label="B-Tree 구성 요소 해부도">
+        <!-- 간선 -->
+        <path class="anat-edge" d="M 366 128 C 366 170, 186 176, 186 218" />
+        <path class="anat-edge" d="M 450 128 C 450 170, 450 176, 450 218" />
+        <path class="anat-edge" d="M 534 128 C 534 170, 726 176, 726 218" />
+
+        <!-- 루트 노드 -->
+        <rect class="anat-box anat-box--hi" x="350" y="82" width="200" height="46" rx="9" />
+        <circle class="anat-ptr anat-ptr--hi" cx="366" cy="105" r="4" />
+        <line class="anat-div" x1="382" y1="82" x2="382" y2="128" />
+        <text class="anat-key" x="416" y="106">30</text>
+        <line class="anat-div" x1="450" y1="82" x2="450" y2="128" />
+        <circle class="anat-ptr" cx="450" cy="105" r="4" />
+        <line class="anat-div" x1="466" y1="82" x2="466" y2="128" />
+        <text class="anat-key" x="500" y="106">60</text>
+        <line class="anat-div" x1="534" y1="82" x2="534" y2="128" />
+        <circle class="anat-ptr" cx="534" cy="105" r="4" />
+
+        <!-- 리프 3개 -->
+        <rect class="anat-box" x="128" y="218" width="116" height="46" rx="9" />
+        <text class="anat-key" x="157" y="242">10</text>
+        <line class="anat-div" x1="186" y1="218" x2="186" y2="264" />
+        <text class="anat-key" x="215" y="242">20</text>
+
+        <rect class="anat-box" x="392" y="218" width="116" height="46" rx="9" />
+        <text class="anat-key" x="421" y="242">30</text>
+        <line class="anat-div" x1="450" y1="218" x2="450" y2="264" />
+        <text class="anat-key" x="479" y="242">40</text>
+
+        <rect class="anat-box" x="668" y="218" width="116" height="46" rx="9" />
+        <text class="anat-key" x="697" y="242">60</text>
+        <line class="anat-div" x1="726" y1="218" x2="726" y2="264" />
+        <text class="anat-key" x="755" y="242">70</text>
+
+        <!-- 높이 브래킷 -->
+        <path class="anat-brace" d="M 62 82 L 52 82 L 52 264 L 62 264" />
+        <text class="anat-tag" x="20" y="168">높이</text>
+        <text class="anat-tag" x="20" y="184">h = 2</text>
+
+        <!-- 레벨 태그 -->
+        <text class="anat-tag" x="86" y="108">레벨 0</text>
+        <text class="anat-tag" x="86" y="244">레벨 1</text>
+
+        <!-- ① 노드 -->
+        <path class="anat-lead" d="M 350 70 L 300 44" />
+        <circle class="anat-dot" cx="350" cy="70" r="3" />
+        <text class="anat-label" x="120" y="40">노드 (node)</text>
+        <text class="anat-sub" x="120" y="58">상자 하나 = 디스크에서 한 번에 읽는 페이지 1개</text>
+
+        <!-- ② 키 -->
+        <path class="anat-lead" d="M 416 82 L 470 44" />
+        <circle class="anat-dot" cx="416" cy="82" r="3" />
+        <text class="anat-label" x="486" y="40">키 (key)</text>
+        <text class="anat-sub" x="486" y="58">노드 안에 오름차순으로 들어 있는 값</text>
+
+        <!-- ③ 자식 포인터 -->
+        <path class="anat-lead" d="M 534 105 L 606 105" />
+        <circle class="anat-dot" cx="534" cy="105" r="3" />
+        <text class="anat-label" x="614" y="100">자식 포인터</text>
+        <text class="anat-sub" x="614" y="118">키 사이마다 하나씩 — 다음에 읽을 노드의 주소</text>
+
+        <!-- ④ 루트 -->
+        <path class="anat-lead" d="M 350 116 L 296 132" />
+        <circle class="anat-dot" cx="350" cy="116" r="3" />
+        <text class="anat-label" x="176" y="130" text-anchor="end">루트 노드</text>
+        <text class="anat-sub" x="176" y="148" text-anchor="end">탐색이 항상 여기서 시작한다</text>
+
+        <!-- ⑤ 리프 -->
+        <path class="anat-lead" d="M 450 264 L 450 306" />
+        <circle class="anat-dot" cx="450" cy="264" r="3" />
+        <text class="anat-label" x="450" y="326" text-anchor="middle">리프 노드</text>
+        <text class="anat-sub" x="450" y="344" text-anchor="middle">자식이 없는 맨 아래층. 모든 리프는 같은 레벨에 있다</text>
+
+        <!-- ⑥ 차수 -->
+        <path class="anat-lead" d="M 550 94 L 606 66" />
+        <circle class="anat-dot" cx="550" cy="94" r="3" />
+        <text class="anat-label" x="614" y="52">차수 m = 4</text>
+        <text class="anat-sub" x="614" y="70">자식을 최대 4개까지 → 키는 최대 3개</text>
+      </svg>
+      </div>
+
+      <div class="terms">
+        <div class="term">
+          <div class="term__k"><b>노드</b> node · page</div>
+          <div class="term__d">키 여러 개와 자식 포인터를 담은 상자 하나. 디스크에서 <em>한 번의 I/O로 통째로 읽는 단위</em>라서 페이지라고도 부릅니다.</div>
+        </div>
+        <div class="term">
+          <div class="term__k"><b>키</b> key</div>
+          <div class="term__d">노드 안에 <em>오름차순으로 정렬되어</em> 들어 있는 값. 인덱스를 건 컬럼의 값이라고 보면 됩니다.</div>
+        </div>
+        <div class="term">
+          <div class="term__k"><b>차수</b> m · order · fanout</div>
+          <div class="term__d">한 노드가 가질 수 있는 <em>자식의 최대 개수</em>. 키는 그보다 하나 적은 <em>최대 m−1개</em>까지 들어갑니다. m=4면 키 3개까지, 4개가 되는 순간 쪼개집니다.</div>
+        </div>
+        <div class="term">
+          <div class="term__k"><b>높이</b> h · height</div>
+          <div class="term__d">루트에서 리프까지의 <em>레벨 수</em>. 이 문서에서는 루트만 있으면 h=1로 셉니다. <em>h가 곧 디스크를 몇 번 읽느냐</em>입니다.</div>
+        </div>
+        <div class="term">
+          <div class="term__k"><b>N</b></div>
+          <div class="term__d">인덱스에 들어 있는 <em>키의 총 개수</em>. 100만 행에 인덱스를 걸면 N = 100만.</div>
+        </div>
+        <div class="term">
+          <div class="term__k"><b>오버플로 → 분할</b> overflow → split</div>
+          <div class="term__d">노드에 키가 m−1개를 넘으면 담을 수 없어 <em>둘로 쪼개는 것</em>. 이때 가운데 키 하나가 부모로 올라갑니다(승진).</div>
+        </div>
+        <div class="term">
+          <div class="term__k"><b>승진</b> promote</div>
+          <div class="term__d">쪼갤 때 <em>가운데 키가 부모 노드로 올라가는 것</em>. 부모가 없으면 새 루트가 만들어지고, 그때만 높이가 1 늘어납니다.</div>
+        </div>
+        <div class="term">
+          <div class="term__k"><b>언더플로 → 병합</b> underflow → merge</div>
+          <div class="term__d">삭제 때문에 키가 <em>최소 개수보다 적어지면</em> 형제에게 빌려오거나 형제와 합칩니다. 분할의 반대입니다.</div>
+        </div>
+      </div>
+
+      <div class="callout callout--accent">
+        <span class="callout__t">기억할 규칙 두 개</span>
+        ① 새 데이터는 <strong>언제나 리프에</strong> 들어간다. ② 노드가 넘치면 <strong>가운데 키가 부모로 올라가고</strong> 나머지가 좌우로 갈라진다.
+        아래 애니메이션은 이 두 문장이 반복되는 것이 전부입니다.
+      </div>
+    </div>
+  </section>
+
   <!-- ═══════════ 1. 인터랙티브 시각화 ═══════════ -->
   <section class="section" id="viz">
     <div class="section__head">
-      <div class="section__num">01 / VISUALIZE</div>
+      <div class="section__num">02 / VISUALIZE</div>
       <h2 class="section__title">한 키씩 넣어보기</h2>
       <p class="section__desc">
         한 개의 상자 = 디스크 한 페이지입니다. 페이지가 담을 수 있는 키 개수를 넘기면 <span class="badge badge--warn">오버플로</span> 가 발생하고,
@@ -228,15 +366,89 @@
   <!-- ═══════════ 2. B-Tree vs B+Tree ═══════════ -->
   <section class="section" id="compare">
     <div class="section__head">
-      <div class="section__num">02 / COMPARE</div>
+      <div class="section__num">03 / COMPARE</div>
       <h2 class="section__title">B-Tree와 B+Tree는 무엇이 다른가</h2>
       <p class="section__desc">
-        위 시각화에서 모드를 바꾸면 바로 보입니다. B-Tree는 <strong>내부 노드에도 실제 데이터가 있고</strong>,
-        B+Tree는 <strong>데이터가 전부 리프에만</strong> 있으며 내부 노드의 키는 길 안내용 이정표(separator)일 뿐입니다.
+        같은 키 <span class="mono acc">10 · 20 · 30 · 40 · 50 · 60 · 70</span> 을 같은 차수(m=4)로 넣었을 때
+        두 트리가 실제로 어떻게 달라지는지 나란히 놓았습니다. 아래 설명에 마우스를 올리면 그림에서 해당 부분이 켜집니다.
       </p>
     </div>
 
-    <div class="panel panel--flush">
+    <div class="cmp">
+      <div class="cmp__col cmp__col--btree">
+        <div class="cmp__head"><b>B-Tree</b><span>데이터가 내부 노드에도 흩어져 있다</span></div>
+        <div class="cmp__stage" id="cmpBtree">
+          <span class="cmp-none" data-diff="3">리프 링크 없음</span>
+        </div>
+        <div class="cmp__foot"><b>리프에 있는 키</b> 5개 / 전체 7개<span>·</span><b>노드 수</b> 4</div>
+      </div>
+
+      <div class="cmp__col cmp__col--bplus">
+        <div class="cmp__head"><b>B+Tree</b><span>데이터가 전부 리프에 모여 있다</span></div>
+        <div class="cmp__stage" id="cmpBplus"></div>
+        <div class="cmp__foot"><b>리프에 있는 키</b> 7개 / 전체 7개<span>·</span><b>노드 수</b> 4</div>
+      </div>
+    </div>
+
+    <div class="cmp-notes">
+      <div class="cmp-note" data-target="1" tabindex="0">
+        <span class="cmp-note__n">1</span>
+        <div>
+          <div class="cmp-note__t">내부 노드에 무엇이 들어 있나</div>
+          <div class="cmp-note__d">
+            <span class="b">B-Tree</span> — 루트의 <span class="mono">20 · 40</span> 은 <strong>진짜 데이터</strong>다. 리프 어디에도 20과 40은 없다.<br />
+            <span class="p">B+Tree</span> — 루트의 <span class="mono">30 · 50</span> 은 <strong>“30 이상은 오른쪽”이라는 이정표</strong>일 뿐이다. 진짜 30과 50은 리프에 그대로 있다.
+          </div>
+        </div>
+      </div>
+
+      <div class="cmp-note" data-target="2" tabindex="0">
+        <span class="cmp-note__n">2</span>
+        <div>
+          <div class="cmp-note__t">리프만 읽으면 전부 읽히나</div>
+          <div class="cmp-note__d">
+            <span class="b">B-Tree</span> — 리프에는 <span class="mono">10, 30, 50, 60, 70</span> 5개뿐. 전체를 훑으려면 내부 노드까지 들러야 한다.<br />
+            <span class="p">B+Tree</span> — 리프에 <strong>7개 전부</strong>. 리프만 왼쪽에서 오른쪽으로 훑으면 그게 곧 정렬된 전체 데이터다.
+          </div>
+        </div>
+      </div>
+
+      <div class="cmp-note" data-target="3" tabindex="0">
+        <span class="cmp-note__n">3</span>
+        <div>
+          <div class="cmp-note__t">옆 리프로 바로 갈 수 있나</div>
+          <div class="cmp-note__d">
+            <span class="b">B-Tree</span> — 리프끼리 연결이 <strong>없다</strong>. <span class="mono">20~65</span> 같은 범위를 읽으려면 부모로 올라갔다 내려오기를 반복한다(랜덤 I/O).<br />
+            <span class="p">B+Tree</span> — 점선처럼 <strong>리프가 한 줄로 이어져</strong> 있다. 한 번 내려가면 그다음은 순차 스캔이다.
+          </div>
+        </div>
+      </div>
+
+      <div class="cmp-note" data-target="4" tabindex="0">
+        <span class="cmp-note__n">4</span>
+        <div>
+          <div class="cmp-note__t">한 페이지에 몇 개나 들어가나 (실전에서 제일 중요)</div>
+          <div class="cmp-note__d">
+            <span class="b">B-Tree</span> — 내부 노드가 <strong>키 + 값</strong>을 같이 들고 있어 한 페이지에 적게 들어간다 → 차수가 작아지고 높이가 높아진다.<br />
+            <span class="p">B+Tree</span> — 내부 노드는 <strong>키 + 포인터</strong>뿐이라 훨씬 많이 들어간다 → 차수가 커지고 <strong>높이가 낮아진다 = 디스크를 덜 읽는다</strong>.
+          </div>
+        </div>
+      </div>
+
+      <div class="cmp-note" data-target="5" tabindex="0">
+        <span class="cmp-note__n">5</span>
+        <div>
+          <div class="cmp-note__t">쪼갤 때 가운데 키의 운명</div>
+          <div class="cmp-note__d">
+            <span class="b">B-Tree</span> — 가운데 키가 부모로 <strong>이동</strong>한다(push-up). 원래 있던 리프에서는 사라진다.<br />
+            <span class="p">B+Tree</span> — 가운데 키가 부모로 <strong>복사</strong>된다(copy-up). 리프에도 그대로 남아 있어서 리프만 봐도 데이터가 온전하다.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <details class="cmp-table">
+      <summary>표로 한 번에 보기</summary>
       <div class="tbl-wrap">
         <table class="tbl">
           <thead>
@@ -254,7 +466,7 @@
           </tbody>
         </table>
       </div>
-    </div>
+    </details>
 
     <div class="grid grid--2 mt6">
       <div class="panel">
@@ -288,7 +500,7 @@
   <!-- ═══════════ 3. 시간복잡도 ═══════════ -->
   <section class="section" id="complexity">
     <div class="section__head">
-      <div class="section__num">03 / MATH</div>
+      <div class="section__num">04 / MATH</div>
       <h2 class="section__title">log의 밑은 무엇이고, 왜 그런가</h2>
       <p class="section__desc">
         “B-Tree는 O(log N)” 이라는 말은 절반만 맞습니다. 중요한 건 <strong>밑(base)</strong>입니다.
@@ -467,7 +679,7 @@ N = 10<sup>8</sup> 일 때
   <!-- ═══════════ 4. 실무 ═══════════ -->
   <section class="section" id="practice">
     <div class="section__head">
-      <div class="section__num">04 / IN PRACTICE</div>
+      <div class="section__num">05 / IN PRACTICE</div>
       <h2 class="section__title">이 모양이 SQL로 드러나는 순간</h2>
       <p class="section__desc">인덱스 규칙을 외우는 대신, 위에서 본 트리 모양으로 설명하면 전부 자명해집니다.</p>
     </div>

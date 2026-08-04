@@ -117,12 +117,13 @@
 
     height() { return this.snapshot().height; }
 
-    _push(kind, msg, deco) {
+    _push(kind, msg, deco, hold) {
       if (this.quiet) return;
       this.steps.push({
         kind,
         msg,
         deco: deco || {},
+        hold: hold || 1,
         tree: this.snapshot(),
         last: Object.assign({}, this.last),
         total: Object.assign({}, this.total),
@@ -254,36 +255,66 @@
 
     _fixOverflow(node, path) {
       while (node.keys.length > this.maxKeys) {
+        const before = node.keys.slice();
         this._push('overflow',
-          `page #${node.id} 키 ${node.keys.length}개 > 최대 ${this.maxKeys}개 → 오버플로! 분할한다`,
-          { active: [node.id], state: { [node.id]: 'overflow' } });
+          `page #${node.id} 에 키가 ${before.length}개 — 한 노드가 가질 수 있는 최대치 ${this.maxKeys}개를 넘었다`,
+          {
+            active: [node.id],
+            state: { [node.id]: 'overflow' },
+            overflowKeys: { [node.id]: before.map((_, i) => i) },
+          }, 1.5);
 
         this.last.splits++;
         const parentEntry = path.length ? path[path.length - 1] : null;
         const right = this._mk(node.leaf);
-        let upKey;
-        let splitMsg;
+        const isCopyUp = this.mode === 'bplus' && node.leaf;
 
-        if (this.mode === 'bplus' && node.leaf) {
-          /* 리프 분할: 오른쪽 첫 키를 "복사"해서 올린다 (리프에도 남는다) */
-          const mid = Math.ceil(node.keys.length / 2);
+        /* ── ① 분할 계획을 먼저 보여준다 (아직 자르지 않는다) ── */
+        const n = before.length;
+        const mid = isCopyUp ? Math.ceil(n / 2) : (n - 1) >> 1;
+        const upKey = before[mid];
+        const leftIdx = [];
+        const rightIdx = [];
+        for (let i = 0; i < n; i++) {
+          if (i < mid) leftIdx.push(i);
+          else if (i > mid) rightIdx.push(i);
+          else if (isCopyUp) rightIdx.push(i);   /* copy-up 은 중앙 키가 오른쪽에 남는다 */
+        }
+        const leftKeys = before.slice(0, mid);
+        const rightKeys = isCopyUp ? before.slice(mid) : before.slice(mid + 1);
+
+        this._push('median',
+          isCopyUp
+            ? `가운데를 기준으로 왼쪽 ${leftKeys.length}개 · 오른쪽 ${rightKeys.length}개로 나눈다. 오른쪽 첫 키 ${upKey} 는 리프에 그대로 두고 부모에 복사(copy-up)한다`
+            : `가운데 키 ${upKey} 를 부모로 올린다(승진). 남는 키는 왼쪽 [${leftKeys.join(' · ') || '없음'}] · 오른쪽 [${rightKeys.join(' · ') || '없음'}] 로 갈라진다`,
+          {
+            active: [node.id],
+            state: { [node.id]: 'overflow' },
+            groupLeft: { [node.id]: leftIdx },
+            groupRight: { [node.id]: rightIdx },
+            medianKey: { [node.id]: mid },
+            promoteFrom: { node: node.id, idx: mid },
+          }, 2.2);
+
+        /* ── ② 실제로 자른다 ── */
+        if (isCopyUp) {
           right.keys = node.keys.splice(mid);
           right.next = node.next;
           node.next = right;
-          upKey = right.keys[0];
-          splitMsg = `리프 분할 → [${node.keys.join(' · ')}] | [${right.keys.join(' · ')}] · 오른쪽 첫 키 ${upKey} 를 부모로 복사(copy-up)`;
         } else {
-          /* 내부 노드(또는 B-Tree 리프) 분할: 중앙 키를 위로 "이동" */
-          const mid = (node.keys.length - 1) >> 1;
-          upKey = node.keys[mid];
-          right.keys = node.keys.slice(mid + 1);
-          node.keys = node.keys.slice(0, mid);
+          right.keys = before.slice(mid + 1);
+          node.keys = before.slice(0, mid);
           if (!node.leaf) {
             right.children = node.children.slice(mid + 1);
             node.children = node.children.slice(0, mid + 1);
           }
-          splitMsg = `중앙 키 ${upKey} 를 부모로 승격(push-up) → [${node.keys.join(' · ')}] | [${right.keys.join(' · ')}]`;
         }
+
+        const splitMsg = isCopyUp
+          ? `리프가 둘로 갈라졌다 → [${node.keys.join(' · ')}] | [${right.keys.join(' · ')}] · ${upKey} 는 양쪽 모두에 있다(리프에 원본, 부모에 이정표)`
+          : node.leaf
+            ? `리프가 둘로 갈라졌다 → [${node.keys.join(' · ') || '비어 있음'}] | [${right.keys.join(' · ')}] · ${upKey} 는 위로 올라가 여기엔 없다`
+            : `내부 노드가 갈라지며 자식 포인터도 ${node.children.length}개 · ${right.children.length}개로 나뉜다`;
 
         const splitDeco = {
           active: [node.id, right.id],
@@ -291,18 +322,26 @@
           bornFrom: { [right.id]: node.id },
         };
 
+        /* ── ③ 부모에 자리를 만들고 키를 올려보낸다 ── */
         if (!parentEntry) {
           const newRoot = this._mk(false);
           newRoot.keys = [upKey];
           newRoot.children = [node, right];
           this.root = newRoot;
-          splitDeco.keyHi = { [newRoot.id]: [0] };
           splitDeco.bornFrom[newRoot.id] = node.id;
-          this._push('split', splitMsg, splitDeco);
+          splitDeco.incoming = { [newRoot.id]: [0] };
+          splitDeco.promoteTo = { node: newRoot.id, idx: 0 };
+          this._push('split', splitMsg, splitDeco, 1.6);
+
           const h = this.snapshot().height;
           this._push('newroot',
-            `루트가 분할됨 → 새 루트 page #${newRoot.id} 생성 · 트리 높이 ${h - 1} → ${h}`,
-            { active: [newRoot.id], state: { [newRoot.id]: 'new' }, keyNew: { [newRoot.id]: [0] } });
+            `올라간 ${upKey} 를 담을 부모가 없다 → 새 루트 page #${newRoot.id} 를 만든다 · 트리 높이 ${h - 1} → ${h}`,
+            {
+              active: [newRoot.id],
+              state: { [newRoot.id]: 'new' },
+              keyNew: { [newRoot.id]: [0] },
+              edge: [[newRoot.id, 0], [newRoot.id, 1]],
+            }, 2);
           return;
         }
 
@@ -310,11 +349,18 @@
         const at = parentEntry.idx;
         p.keys.splice(at, 0, upKey);
         p.children.splice(at + 1, 0, right);
-        splitDeco.keyHi = { [p.id]: [at] };
-        this._push('split', splitMsg, splitDeco);
+        splitDeco.incoming = { [p.id]: [at] };
+        splitDeco.promoteTo = { node: p.id, idx: at };
+        this._push('split', splitMsg, splitDeco, 1.6);
+
         this._push('promote',
-          `부모 page #${p.id} 에 ${upKey} 와 새 포인터 삽입 → [${p.keys.join(' · ')}]`,
-          { active: [p.id], keyNew: { [p.id]: [at] }, state: { [p.id]: 'target' } });
+          `부모 page #${p.id} 가 ${upKey} 를 받아 [${p.keys.join(' · ')}] 가 되고, 새로 생긴 page #${right.id} 를 가리키는 포인터가 하나 늘어난다`,
+          {
+            active: [p.id],
+            keyNew: { [p.id]: [at] },
+            state: { [p.id]: 'target' },
+            edge: [[p.id, at + 1]],
+          }, 1.8);
 
         path.pop();
         node = p;

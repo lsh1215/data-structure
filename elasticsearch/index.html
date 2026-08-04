@@ -29,7 +29,8 @@
   <div class="topbar__title">Elasticsearch <span class="sub">inverted index · BM25</span></div>
   <div class="topbar__spacer"></div>
   <div class="topbar__links">
-    <a class="topbar__link topbar__link--active" href="#viz">색인과 검색</a>
+    <a class="topbar__link topbar__link--active" href="#terms">용어</a>
+    <a class="topbar__link" href="#viz">색인과 검색</a>
     <a class="topbar__link" href="#bm25">BM25</a>
     <a class="topbar__link" href="#segment">세그먼트</a>
     <a class="topbar__link" href="#structures">내부 자료구조</a>
@@ -49,10 +50,122 @@
     </p>
   </header>
 
+  <!-- ═══════════ 0. 용어 ═══════════ -->
+  <section class="section" id="terms" style="margin-top:var(--sp-10)">
+    <div class="section__head">
+      <div class="section__num">01 / 용어부터</div>
+      <h2 class="section__title">먼저 이 그림의 이름들</h2>
+      <p class="section__desc">
+        아래에서 계속 <strong>토큰 · term · posting list · tf · df</strong> 라는 말을 씁니다.
+        어려워 보이지만 결국 “문서를 단어로 쪼개서, 단어마다 문서 번호를 적어둔 표”가 전부입니다.
+      </p>
+    </div>
+
+    <div class="panel">
+      <div class="anatomy-wrap">
+      <svg class="anatomy" viewBox="0 0 940 320" role="img" aria-label="역색인 구성 요소 해부도">
+        <!-- 문서 -->
+        <text class="anat-tag" x="24" y="46">문서 (document)</text>
+        <rect class="anat-box" x="24" y="56" width="250" height="44" rx="8" />
+        <text class="anat-key" x="149" y="79" style="font-size:12px">#0  "Hash Table Lookup"</text>
+
+        <path class="anat-edge" d="M 149 100 L 149 128" />
+        <polygon class="anat-dot" points="149,134 144,124 154,124" />
+
+        <!-- 토큰 -->
+        <text class="anat-tag" x="24" y="152">토큰 (token) — analyzer 가 쪼갠 조각</text>
+        <rect class="anat-box" x="24" y="162" width="74" height="34" rx="7" />
+        <text class="anat-key" x="61" y="180" style="font-size:12px">hash</text>
+        <rect class="anat-box" x="106" y="162" width="74" height="34" rx="7" />
+        <text class="anat-key" x="143" y="180" style="font-size:12px">table</text>
+        <rect class="anat-box" x="188" y="162" width="86" height="34" rx="7" />
+        <text class="anat-key" x="231" y="180" style="font-size:12px">lookup</text>
+
+        <path class="anat-edge" d="M 274 179 C 320 179, 320 120, 366 120" />
+        <polygon class="anat-dot" points="366,120 358,116 358,124" />
+        <text class="anat-sub" x="286" y="212">정규화를 마친 토큰이</text>
+        <text class="anat-sub" x="286" y="228">색인의 term 이 된다</text>
+
+        <!-- 역색인 표 -->
+        <text class="anat-tag" x="380" y="46">역색인 (inverted index)</text>
+        <line class="anat-div" x1="380" y1="58" x2="900" y2="58" />
+        <text class="anat-tag" x="392" y="76">term</text>
+        <text class="anat-tag" x="530" y="76">df</text>
+        <text class="anat-tag" x="596" y="76">posting list</text>
+        <line class="anat-div" x1="380" y1="86" x2="900" y2="86" />
+
+        <rect class="anat-box anat-box--hi" x="380" y="98" width="520" height="42" rx="8" />
+        <text class="anat-key" x="392" y="120" style="font-size:12px; text-anchor:start">hash</text>
+        <text class="anat-key" x="530" y="120" style="font-size:12px; text-anchor:start; fill:var(--text-secondary)">2</text>
+        <text class="anat-key" x="596" y="120" style="font-size:12px; text-anchor:start; fill:var(--accent)">#0:1  ·  #3:2</text>
+
+        <rect class="anat-box" x="380" y="150" width="520" height="42" rx="8" />
+        <text class="anat-key" x="392" y="172" style="font-size:12px; text-anchor:start">table</text>
+        <text class="anat-key" x="530" y="172" style="font-size:12px; text-anchor:start; fill:var(--text-secondary)">2</text>
+        <text class="anat-key" x="596" y="172" style="font-size:12px; text-anchor:start; fill:var(--text-secondary)">#0:1  ·  #3:1</text>
+
+        <rect class="anat-box" x="380" y="202" width="520" height="42" rx="8" />
+        <text class="anat-key" x="392" y="224" style="font-size:12px; text-anchor:start">lookup</text>
+        <text class="anat-key" x="530" y="224" style="font-size:12px; text-anchor:start; fill:var(--text-secondary)">1</text>
+        <text class="anat-key" x="596" y="224" style="font-size:12px; text-anchor:start; fill:var(--text-secondary)">#0:1</text>
+
+        <!-- 라벨 -->
+        <path class="anat-lead" d="M 530 98 L 530 74" />
+        <text class="anat-sub" x="470" y="272">df = 이 단어가 나온 문서 수</text>
+        <path class="anat-lead" d="M 640 140 L 640 264" />
+        <circle class="anat-dot" cx="640" cy="140" r="3" />
+        <text class="anat-label" x="700" y="284">#3:2 = 3번 문서에 2번 등장 (tf)</text>
+        <text class="anat-sub" x="700" y="302">문서 번호는 항상 오름차순으로 정렬돼 있다</text>
+      </svg>
+      </div>
+
+      <div class="terms">
+        <div class="term">
+          <div class="term__k"><b>문서</b> document</div>
+          <div class="term__d">색인의 단위. RDB의 <em>행(row) 하나</em>에 해당합니다. 저마다 번호(doc id)를 받습니다.</div>
+        </div>
+        <div class="term">
+          <div class="term__k"><b>analyzer</b> 분석기</div>
+          <div class="term__d">문서를 <em>검색 가능한 조각으로 바꾸는 파이프라인</em>. 태그 제거 → 자르기 → 소문자 → 불용어 제거 → 어간 추출 순서로 흐릅니다.</div>
+        </div>
+        <div class="term">
+          <div class="term__k"><b>토큰 · term</b></div>
+          <div class="term__d">analyzer가 쪼갠 <em>단어 조각</em>이 토큰, 그 중 최종적으로 색인에 저장된 형태가 term입니다. <em>검색은 term 단위로만</em> 일어납니다.</div>
+        </div>
+        <div class="term">
+          <div class="term__k"><b>역색인</b> inverted index</div>
+          <div class="term__d">“문서 → 단어”를 뒤집어 <em>“단어 → 그 단어가 든 문서 목록”</em>으로 만든 표. 이 방향이라 부분 검색이 빠릅니다.</div>
+        </div>
+        <div class="term">
+          <div class="term__k"><b>posting list</b></div>
+          <div class="term__d">한 term이 등장한 <em>문서 번호들의 목록</em>. 항상 오름차순이라 두 목록을 한 번에 훑어 교집합을 구할 수 있습니다.</div>
+        </div>
+        <div class="term">
+          <div class="term__k"><b>tf</b> term frequency</div>
+          <div class="term__d"><em>한 문서 안에서</em> 그 단어가 몇 번 나왔는지. 많이 나올수록 그 문서와 관련 있다고 봅니다.</div>
+        </div>
+        <div class="term">
+          <div class="term__k"><b>df</b> document frequency</div>
+          <div class="term__d"><em>전체 문서 중</em> 그 단어가 나온 문서 수. 클수록 흔한 단어라 점수에서 깎입니다.</div>
+        </div>
+        <div class="term">
+          <div class="term__k"><b>세그먼트</b> segment</div>
+          <div class="term__d">역색인이 저장된 <em>한 번 쓰면 못 고치는 파일</em>. 새 문서는 새 세그먼트로 쌓이고 나중에 합쳐집니다.</div>
+        </div>
+      </div>
+
+      <div class="callout callout--accent">
+        <span class="callout__t">기억할 규칙 두 개</span>
+        ① 색인할 때와 검색할 때 <strong>완전히 같은 analyzer</strong>를 거쳐야 만난다.
+        ② 검색은 term으로 posting list를 꺼내 <strong>합치고(AND/OR) 점수를 매겨 정렬</strong>하는 것이 전부다.
+      </div>
+    </div>
+  </section>
+
   <!-- ═══════════ 1. 색인 & 검색 ═══════════ -->
   <section class="section" id="viz">
     <div class="section__head">
-      <div class="section__num">01 / INDEX &amp; SEARCH</div>
+      <div class="section__num">02 / INDEX &amp; SEARCH</div>
       <h2 class="section__title">색인 파이프라인과 검색 파이프라인</h2>
       <p class="section__desc">
         핵심 규칙은 하나입니다 — <strong>색인할 때와 검색할 때 완전히 같은 analyzer 를 거쳐야 한다.</strong>
@@ -176,7 +289,7 @@
   <!-- ═══════════ 2. BM25 ═══════════ -->
   <section class="section" id="bm25">
     <div class="section__head">
-      <div class="section__num">02 / SCORING</div>
+      <div class="section__num">03 / SCORING</div>
       <h2 class="section__title">BM25 — 왜 이 문서가 1등인가</h2>
       <p class="section__desc">
         검색 결과 순서는 마법이 아니라 하나의 수식입니다. 위 시각화에서 검색하면 문서마다 이 계산이 그대로 찍힙니다.
@@ -243,7 +356,7 @@ b  = 0.75  <span class="cm">// 문서 길이 정규화 강도. 0이면 길이 �
   <!-- ═══════════ 3. 세그먼트 ═══════════ -->
   <section class="section" id="segment">
     <div class="section__head">
-      <div class="section__num">03 / SEGMENT</div>
+      <div class="section__num">04 / SEGMENT</div>
       <h2 class="section__title">색인했는데 왜 바로 검색이 안 되는가</h2>
       <p class="section__desc">
         Lucene 세그먼트는 <strong>한 번 쓰면 못 고치는(immutable)</strong> 파일입니다.
@@ -337,7 +450,7 @@ b  = 0.75  <span class="cm">// 문서 길이 정규화 강도. 0이면 길이 �
   <!-- ═══════════ 4. 내부 자료구조 ═══════════ -->
   <section class="section" id="structures">
     <div class="section__head">
-      <div class="section__num">04 / STRUCTURES</div>
+      <div class="section__num">05 / STRUCTURES</div>
       <h2 class="section__title">역색인 하나에 들어 있는 자료구조들</h2>
       <p class="section__desc">위 표 하나처럼 보이지만, 실제 Lucene 세그먼트 안에는 목적이 다른 자료구조가 여러 개 들어 있습니다.</p>
     </div>
@@ -402,7 +515,7 @@ b  = 0.75  <span class="cm">// 문서 길이 정규화 강도. 0이면 길이 �
   <!-- ═══════════ 5. 실무 ═══════════ -->
   <section class="section" id="practice">
     <div class="section__head">
-      <div class="section__num">05 / IN PRACTICE</div>
+      <div class="section__num">06 / IN PRACTICE</div>
       <h2 class="section__title">이 구조가 설정으로 드러나는 순간</h2>
     </div>
 

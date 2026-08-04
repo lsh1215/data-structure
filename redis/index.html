@@ -29,7 +29,8 @@
   <div class="topbar__title">Redis <span class="sub">dict · hashtable · skiplist</span></div>
   <div class="topbar__spacer"></div>
   <div class="topbar__links">
-    <a class="topbar__link topbar__link--active" href="#viz">명령의 여정</a>
+    <a class="topbar__link topbar__link--active" href="#terms">용어</a>
+    <a class="topbar__link" href="#viz">명령의 여정</a>
     <a class="topbar__link" href="#struct">dict 해부</a>
     <a class="topbar__link" href="#rehash">점진적 리해싱</a>
     <a class="topbar__link" href="#skiplist">ZSET skiplist</a>
@@ -49,10 +50,134 @@
     </p>
   </header>
 
+  <!-- ═══════════ 0. 용어 ═══════════ -->
+  <section class="section" id="terms" style="margin-top:var(--sp-10)">
+    <div class="section__head">
+      <div class="section__num">01 / 용어부터</div>
+      <h2 class="section__title">먼저 이 그림의 이름들</h2>
+      <p class="section__desc">
+        아래에서 계속 <strong>해시 · 버킷 · 체인 · dictEntry · load factor</strong> 라는 말을 씁니다.
+        Redis 소스에 그대로 나오는 이름이라 한 번만 익혀두면 코드를 열었을 때도 길을 잃지 않습니다.
+      </p>
+    </div>
+
+    <div class="panel">
+      <div class="anatomy-wrap">
+      <svg class="anatomy" viewBox="0 0 940 330" role="img" aria-label="Redis dict 구성 요소 해부도">
+        <!-- 왼쪽: 키 → 해시 → 인덱스 -->
+        <rect class="anat-box" x="24" y="56" width="126" height="40" rx="8" />
+        <text class="anat-key" x="87" y="77" style="font-size:13px">"user:1"</text>
+        <text class="anat-tag" x="24" y="46">키 (key)</text>
+
+        <path class="anat-edge" d="M 150 76 L 186 76" marker-end="" />
+        <polygon class="anat-dot" points="186,76 178,72 178,80" />
+
+        <rect class="anat-box anat-box--hi" x="192" y="56" width="120" height="40" rx="8" />
+        <text class="anat-key" x="252" y="77" style="font-size:12px">hash(key)</text>
+        <text class="anat-tag" x="192" y="46">해시 함수</text>
+
+        <path class="anat-edge" d="M 312 76 L 348 76" />
+        <polygon class="anat-dot" points="348,76 340,72 340,80" />
+
+        <rect class="anat-box" x="354" y="56" width="130" height="40" rx="8" />
+        <text class="anat-key" x="419" y="77" style="font-size:12px">0x3f2a1b9c</text>
+        <text class="anat-tag" x="354" y="46">해시값</text>
+
+        <path class="anat-edge" d="M 419 96 L 419 122" />
+        <rect class="anat-box" x="342" y="122" width="154" height="36" rx="8" />
+        <text class="anat-key" x="419" y="141" style="font-size:12px">&amp; sizemask (7)</text>
+        <text class="anat-sub" x="342" y="176">크기가 2의 거듭제곱이라 나눗셈 대신</text>
+        <text class="anat-sub" x="342" y="192">비트 AND 한 번으로 칸 번호가 나온다</text>
+
+        <path class="anat-edge" d="M 496 140 C 540 140, 540 86, 578 86" />
+        <polygon class="anat-dot" points="578,86 570,82 570,90" />
+
+        <!-- 버킷 배열 -->
+        <text class="anat-tag" x="590" y="46">버킷 배열 (table)</text>
+        <rect class="anat-box" x="590" y="56" width="60" height="40" rx="7" />
+        <text class="anat-tag" x="612" y="81">[0]</text>
+        <rect class="anat-box" x="654" y="56" width="60" height="40" rx="7" />
+        <text class="anat-tag" x="676" y="81">[1]</text>
+        <rect class="anat-box anat-box--hi" x="718" y="56" width="60" height="40" rx="7" />
+        <text class="anat-tag" x="740" y="81" style="fill:var(--accent)">[2]</text>
+        <rect class="anat-box" x="782" y="56" width="60" height="40" rx="7" />
+        <text class="anat-tag" x="804" y="81">[3]</text>
+        <text class="anat-sub" x="856" y="81">…</text>
+
+        <!-- 체인 -->
+        <path class="anat-edge" d="M 748 96 L 748 126" />
+        <polygon class="anat-dot" points="748,132 743,122 753,122" />
+        <rect class="anat-box anat-box--hi" x="668" y="132" width="160" height="52" rx="8" />
+        <text class="anat-key" x="748" y="150" style="font-size:12px">key: "user:1"</text>
+        <text class="anat-key" x="748" y="170" style="font-size:12px; fill:var(--text-secondary)">val: "sanghun"</text>
+
+        <path class="anat-edge" d="M 748 184 L 748 214" />
+        <polygon class="anat-dot" points="748,220 743,210 753,210" />
+        <rect class="anat-box" x="668" y="220" width="160" height="52" rx="8" />
+        <text class="anat-key" x="748" y="238" style="font-size:12px">key: "cart:9"</text>
+        <text class="anat-key" x="748" y="258" style="font-size:12px; fill:var(--text-secondary)">val: "3"</text>
+        <text class="anat-tag" x="838" y="252">next → NULL</text>
+
+        <!-- 라벨 -->
+        <path class="anat-lead" d="M 668 158 L 600 158" />
+        <circle class="anat-dot" cx="668" cy="158" r="3" />
+        <text class="anat-label" x="592" y="154" text-anchor="end">dictEntry</text>
+        <text class="anat-sub" x="592" y="172" text-anchor="end">key · value · next 포인터 하나짜리 구조체</text>
+
+        <path class="anat-lead" d="M 838 200 L 900 200" />
+        <circle class="anat-dot" cx="838" cy="200" r="3" />
+        <text class="anat-label" x="900" y="196" text-anchor="end">체인 (chain)</text>
+        <text class="anat-sub" x="900" y="300" text-anchor="end">같은 칸에 두 개 이상 매달린 상태 = 충돌</text>
+      </svg>
+      </div>
+
+      <div class="terms">
+        <div class="term">
+          <div class="term__k"><b>dict</b> 딕셔너리</div>
+          <div class="term__d">Redis의 키-값 저장소 본체. <em>버킷 배열 + 그 안에 매달린 엔트리들</em>을 합쳐 부르는 이름입니다.</div>
+        </div>
+        <div class="term">
+          <div class="term__k"><b>해시 함수</b> hash</div>
+          <div class="term__d">문자열 키를 <em>고정 길이 숫자</em>로 바꾸는 함수. 같은 키는 항상 같은 숫자가 나옵니다.</div>
+        </div>
+        <div class="term">
+          <div class="term__k"><b>버킷</b> bucket · slot</div>
+          <div class="term__d">배열의 <em>칸 하나</em>. 해시값으로 몇 번 칸인지 정합니다. 칸에는 값이 아니라 <em>첫 엔트리의 주소</em>만 들어 있습니다.</div>
+        </div>
+        <div class="term">
+          <div class="term__k"><b>sizemask</b></div>
+          <div class="term__d"><em>size − 1</em>. 배열 크기가 항상 2의 거듭제곱이라 <em>해시값 &amp; sizemask</em> 만으로 칸 번호가 나옵니다.</div>
+        </div>
+        <div class="term">
+          <div class="term__k"><b>dictEntry</b> 엔트리</div>
+          <div class="term__d">키 하나 · 값 하나 · <em>다음 엔트리를 가리키는 포인터</em>를 담은 24바이트짜리 구조체.</div>
+        </div>
+        <div class="term">
+          <div class="term__k"><b>충돌 · 체인</b> collision · chaining</div>
+          <div class="term__d">서로 다른 키가 <em>같은 칸</em>에 떨어지는 것. 그럴 땐 엔트리를 줄줄이 매달아(체인) 해결합니다.</div>
+        </div>
+        <div class="term">
+          <div class="term__k"><b>load factor</b> 적재율</div>
+          <div class="term__d"><em>used ÷ size</em>. 저장된 엔트리 수를 칸 수로 나눈 값이며, 이 값이 곧 <em>평균 체인 길이</em>입니다. 1을 넘으면 배열을 키웁니다.</div>
+        </div>
+        <div class="term">
+          <div class="term__k"><b>리해싱</b> rehash</div>
+          <div class="term__d">배열을 두 배로 늘리고 <em>모든 엔트리의 칸 번호를 다시 계산해 옮기는 것</em>. Redis는 이걸 한 번에 안 하고 나눠서 합니다.</div>
+        </div>
+      </div>
+
+      <div class="callout callout--accent">
+        <span class="callout__t">기억할 규칙 두 개</span>
+        ① 키를 해시해서 <strong>칸 번호</strong>를 구하고, 그 칸의 <strong>체인을 훑어</strong> 키를 찾는다.
+        ② 체인이 길어지면 느려지므로 <strong>칸 수를 늘려(리해싱) 체인을 짧게</strong> 유지한다. 아래 애니메이션은 이 두 문장의 반복입니다.
+      </div>
+    </div>
+  </section>
+
   <!-- ═══════════ 1. 명령 파이프라인 + 해시 테이블 ═══════════ -->
   <section class="section" id="viz">
     <div class="section__head">
-      <div class="section__num">01 / VISUALIZE</div>
+      <div class="section__num">02 / VISUALIZE</div>
       <h2 class="section__title">명령 하나의 전체 경로</h2>
       <p class="section__desc">
         위쪽 파이프라인은 명령이 지나는 단계, 아래는 실제 해시 테이블입니다.
@@ -172,7 +297,7 @@
   <!-- ═══════════ 2. 구조체 해부 ═══════════ -->
   <section class="section" id="struct">
     <div class="section__head">
-      <div class="section__num">02 / ANATOMY</div>
+      <div class="section__num">03 / ANATOMY</div>
       <h2 class="section__title">dict · dictht · dictEntry</h2>
       <p class="section__desc">
         위 그림의 각 요소가 실제 C 구조체의 어느 필드인지 짚어봅니다. 이름만 알면 소스를 열었을 때 길을 잃지 않습니다.
@@ -259,7 +384,7 @@ idx      = hash & sizemask
   <!-- ═══════════ 3. 점진적 리해싱 ═══════════ -->
   <section class="section" id="rehash">
     <div class="section__head">
-      <div class="section__num">03 / REHASH</div>
+      <div class="section__num">04 / REHASH</div>
       <h2 class="section__title">왜 한 번에 옮기지 않는가</h2>
       <p class="section__desc">
         Redis 는 명령을 <strong>한 스레드</strong>로 처리합니다. 1000만 개의 키를 새 테이블로 한 번에 복사하면
@@ -317,7 +442,7 @@ databasesCron()     <span class="cm">// 유휴 시간에 1ms 동안</span>
   <!-- ═══════════ 4. Skiplist ═══════════ -->
   <section class="section" id="skiplist">
     <div class="section__head">
-      <div class="section__num">04 / SKIPLIST</div>
+      <div class="section__num">05 / SKIPLIST</div>
       <h2 class="section__title">ZSET 은 왜 트리가 아니라 skiplist 인가</h2>
       <p class="section__desc">
         정렬이 필요한 ZSET 은 해시로 안 됩니다. 그렇다고 균형 트리(red-black, AVL)를 쓰지도 않습니다.
@@ -427,7 +552,7 @@ databasesCron()     <span class="cm">// 유휴 시간에 1ms 동안</span>
   <!-- ═══════════ 5. 인코딩 ═══════════ -->
   <section class="section" id="encoding">
     <div class="section__head">
-      <div class="section__num">05 / ENCODING</div>
+      <div class="section__num">06 / ENCODING</div>
       <h2 class="section__title">작을 때는 해시를 쓰지 않는다</h2>
       <p class="section__desc">
         원소가 몇 개 안 되면 Redis 는 해시 테이블 대신 <strong>연속된 바이트 배열</strong>(listpack)에 그냥 쭉 저장하고 선형 탐색합니다.

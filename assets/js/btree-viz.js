@@ -129,7 +129,7 @@
         if (!this.playing) return;
         this.next();
         this.play();
-      }, this.delay);
+      }, Math.round(this.delay * ((this.steps[this.i] && this.steps[this.i].hold) || 1)));
       this.onStep(this.steps[this.i], this.i, this.steps.length);
     }
 
@@ -226,22 +226,38 @@
         const keyHi = (deco.keyHi && deco.keyHi[n.id]) || [];
         const keyNew = (deco.keyNew && deco.keyNew[n.id]) || [];
         const ptrHi = (deco.ptrHi && deco.ptrHi[n.id]) || [];
-        const sig = JSON.stringify([n.keys, keyHi, keyNew, ptrHi, n.leaf, L.keyW]);
+        const gLeft = (deco.groupLeft && deco.groupLeft[n.id]) || [];
+        const gRight = (deco.groupRight && deco.groupRight[n.id]) || [];
+        const median = deco.medianKey && deco.medianKey[n.id] != null ? deco.medianKey[n.id] : -1;
+        const incoming = (deco.incoming && deco.incoming[n.id]) || [];
+        const over = (deco.overflowKeys && deco.overflowKeys[n.id]) || [];
+
+        const keyCls = (i) => {
+          let c = 'bt-key';
+          if (i === median) c += ' bt-key--median';
+          else if (gLeft.includes(i)) c += ' bt-key--left';
+          else if (gRight.includes(i)) c += ' bt-key--right';
+          else if (keyNew.includes(i)) c += ' bt-key--new';
+          else if (incoming.includes(i)) c += ' bt-key--incoming';
+          else if (keyHi.includes(i)) c += ' bt-key--hi';
+          else if (over.includes(i)) c += ' bt-key--over';
+          return c;
+        };
+
+        const sig = JSON.stringify([n.keys, keyHi, keyNew, ptrHi, gLeft, gRight, median, incoming, over, n.leaf, L.keyW]);
         if (v.sig !== sig) {
           v.sig = sig;
           let html = '';
           if (n.leaf) {
             if (!n.keys.length) html = `<span class="bt-key" style="width:${p.w - PAD * 2}px">·</span>`;
             n.keys.forEach((k, i) => {
-              const cls = 'bt-key' + (keyNew.includes(i) ? ' bt-key--new' : keyHi.includes(i) ? ' bt-key--hi' : '');
-              html += `<span class="${cls}" style="width:${L.keyW}px">${k}</span>`;
+              html += `<span class="${keyCls(i)}" style="width:${L.keyW}px">${k}</span>`;
             });
           } else {
             for (let i = 0; i <= n.keys.length; i++) {
               html += `<span class="bt-ptr${ptrHi.includes(i) ? ' bt-ptr--hi' : ''}" style="width:${PTR_W}px"></span>`;
               if (i < n.keys.length) {
-                const cls = 'bt-key' + (keyNew.includes(i) ? ' bt-key--new' : keyHi.includes(i) ? ' bt-key--hi' : '');
-                html += `<span class="${cls}" style="width:${L.keyW}px">${n.keys[i]}</span>`;
+                html += `<span class="${keyCls(i)}" style="width:${L.keyW}px">${n.keys[i]}</span>`;
               }
             }
           }
@@ -250,6 +266,20 @@
           v.cells.style.paddingRight = PAD + 'px';
         }
         v.tag.textContent = `#${n.id}` + (n.id === snap.rootId ? ' root' : '') + (n.leaf ? ' leaf' : '');
+
+        /* 승진 마커 (셀 밖에 띄운다) */
+        if (median >= 0) {
+          if (!v.mark) {
+            v.mark = document.createElement('div');
+            v.mark.className = 'bt-promote-mark';
+            v.el.appendChild(v.mark);
+          }
+          v.mark.textContent = '↑ 승진';
+          v.mark.style.left = (PAD + (n.leaf ? median * L.keyW + L.keyW / 2 : PTR_W + median * (L.keyW + PTR_W) + L.keyW / 2)) + 'px';
+          v.mark.hidden = false;
+        } else if (v.mark) {
+          v.mark.hidden = true;
+        }
 
         /* 상태 클래스 */
         const state = (deco.state && deco.state[n.id]) || null;
@@ -290,6 +320,29 @@
       }
       this.syncSvgElements();
 
+      /* 승진 키 애니메이션: 올라갈 키의 위치를 기억했다가 부모 자리로 날려보낸다 */
+      if (deco.promoteFrom) {
+        const src = this.views.get(deco.promoteFrom.node);
+        if (src && src.meta) {
+          this.promoteOrigin = {
+            x: src.tx + this.keyX(src, deco.promoteFrom.idx),
+            y: src.ty + NODE_H / 2,
+            text: (src.meta.keys[deco.promoteFrom.idx] != null ? src.meta.keys[deco.promoteFrom.idx] : ''),
+            w: src.meta.keyW,
+          };
+        }
+      }
+      if (deco.promoteTo && this.promoteOrigin && !instant) {
+        const dst = this.views.get(deco.promoteTo.node);
+        if (dst && dst.meta) {
+          this.flyGhost(this.promoteOrigin, {
+            x: dst.tx + this.keyX(dst, deco.promoteTo.idx),
+            y: dst.ty + NODE_H / 2,
+          });
+        }
+        this.promoteOrigin = null;
+      }
+
       /* 트윈 시작 */
       const dur = instant ? 0 : this.moveMs;
       this.tween = { t0: performance.now(), dur };
@@ -328,6 +381,32 @@
         }
         el.setAttribute('class', 'bt-link' + (d.hi ? ' bt-link--hi' : ''));
       }
+    }
+
+    keyX(v, i) {
+      const m = v.meta;
+      if (m.leaf) return PAD + i * m.keyW + m.keyW / 2;
+      return PAD + PTR_W + i * (m.keyW + PTR_W) + m.keyW / 2;
+    }
+
+    /* 승진하는 키를 복제해 부모 자리까지 날려 보낸다 */
+    flyGhost(from, to) {
+      if (this.ghostEl) this.ghostEl.remove();
+      const el = document.createElement('div');
+      el.className = 'bt-ghost';
+      el.textContent = from.text;
+      el.style.width = Math.max(34, from.w) + 'px';
+      this.nodesLayer.appendChild(el);
+      this.ghostEl = el;
+      this.ghost = {
+        el,
+        x0: from.x, y0: from.y,
+        x1: to.x, y1: to.y,
+        t0: performance.now(),
+        dur: Math.max(420, this.moveMs * 1.25),
+      };
+      const w = Math.max(34, from.w);
+      el.style.transform = `translate(${from.x - w / 2}px, ${from.y - NODE_H / 2}px)`;
     }
 
     ptrX(v, i) {
@@ -375,9 +454,141 @@
         el.setAttribute('d', `M ${x1 + 3} ${y1} C ${x1 + 16} ${mid}, ${x2 - 16} ${mid}, ${x2 - 3} ${y2}`);
       }
 
-      if (k < 1) this.rafId = requestAnimationFrame(() => this.tick());
+      /* 승진 키 고스트 */
+      let ghostBusy = false;
+      if (this.ghost) {
+        const g = this.ghost;
+        const gk = Math.min(1, (now - g.t0) / g.dur);
+        const ge = easeOut(gk);
+        const w = parseFloat(g.el.style.width) || 34;
+        const x = g.x0 + (g.x1 - g.x0) * ge;
+        /* 살짝 위로 솟았다가 내려앉는 곡선 */
+        const arc = Math.sin(Math.PI * gk) * 16;
+        const y = g.y0 + (g.y1 - g.y0) * ge - arc;
+        g.el.style.transform = `translate(${(x - w / 2).toFixed(1)}px, ${(y - NODE_H / 2).toFixed(1)}px) scale(${(1 + 0.12 * Math.sin(Math.PI * gk)).toFixed(3)})`;
+        if (gk >= 1) {
+          g.el.classList.add('bt-ghost--done');
+          const el = g.el;
+          setTimeout(() => { if (el.parentNode) el.remove(); }, 240);
+          if (this.ghostEl === el) this.ghostEl = null;
+          this.ghost = null;
+        } else {
+          ghostBusy = true;
+        }
+      }
+
+      if (k < 1 || ghostBusy) this.rafId = requestAnimationFrame(() => this.tick());
       else this.rafId = null;
     }
+  }
+
+  /* ═══════════════════════════════════════════════════
+     정적 비교 렌더러 — B-Tree vs B+Tree 대조도
+  ═══════════════════════════════════════════════════ */
+  function renderStatic(host, snap, opts) {
+    opts = opts || {};
+    host.innerHTML = '';
+    const L = layout(snap);
+    const byId = new Map(snap.nodes.map((n) => [n.id, n]));
+
+    const world = document.createElement('div');
+    world.className = 'cmp-world';
+    world.style.width = L.totalW + 'px';
+    world.style.height = (L.totalH + 34) + 'px';
+    host.appendChild(world);
+
+    const svg = document.createElementNS(SVGNS, 'svg');
+    svg.setAttribute('class', 'viz__edges');
+    svg.setAttribute('viewBox', `0 0 ${L.totalW} ${L.totalH + 34}`);
+    svg.style.width = L.totalW + 'px';
+    svg.style.height = (L.totalH + 34) + 'px';
+    world.appendChild(svg);
+
+    const pos = (id) => L.pos.get(id);
+    const nodeLeft = (id) => pos(id).x - pos(id).w / 2;
+    const nodeTop = (id) => pos(id).y + 20;
+    const ptrOffset = (n, i) => (n.leaf ? pos(n.id).w / 2 : PAD + i * (PTR_W + L.keyW) + PTR_W / 2);
+
+    /* 간선 */
+    for (const n of snap.nodes) {
+      n.childIds.forEach((cid, i) => {
+        const x1 = nodeLeft(n.id) + ptrOffset(n, i);
+        const y1 = nodeTop(n.id) + NODE_H;
+        const x2 = pos(cid).x;
+        const y2 = nodeTop(cid);
+        const dy = Math.max(14, (y2 - y1) * 0.45);
+        const path = document.createElementNS(SVGNS, 'path');
+        path.setAttribute('class', 'bt-edge');
+        path.setAttribute('d', `M ${x1} ${y1} C ${x1} ${y1 + dy}, ${x2} ${y2 - dy}, ${x2} ${y2}`);
+        svg.appendChild(path);
+      });
+    }
+
+    /* 리프 링크 */
+    if (snap.mode === 'bplus') {
+      for (const n of snap.nodes) {
+        if (!n.leaf || n.nextId == null || !byId.has(n.nextId)) continue;
+        const x1 = nodeLeft(n.id) + pos(n.id).w;
+        const y1 = nodeTop(n.id) + NODE_H / 2;
+        const x2 = nodeLeft(n.nextId);
+        const y2 = nodeTop(n.nextId) + NODE_H / 2;
+        const mid = (y1 + y2) / 2 + 16;
+        const path = document.createElementNS(SVGNS, 'path');
+        path.setAttribute('class', 'bt-link');
+        path.setAttribute('data-diff', '3');
+        path.setAttribute('d', `M ${x1 + 3} ${y1} C ${x1 + 16} ${mid}, ${x2 - 16} ${mid}, ${x2 - 3} ${y2}`);
+        svg.appendChild(path);
+      }
+    }
+
+    /* 노드 */
+    for (const n of snap.nodes) {
+      const el = document.createElement('div');
+      el.className = 'bt-node';
+      el.style.transform = `translate(${nodeLeft(n.id)}px, ${nodeTop(n.id)}px)`;
+
+      const diff = opts.diffOf ? opts.diffOf(n) : null;
+      if (diff) el.dataset.diff = diff;
+
+      const tag = document.createElement('div');
+      tag.className = 'bt-node__tag';
+      tag.textContent = n.depth === 0 ? 'root' : 'leaf';
+      el.appendChild(tag);
+
+      const cells = document.createElement('div');
+      cells.className = 'bt-node__cells';
+      cells.style.paddingLeft = PAD + 'px';
+      cells.style.paddingRight = PAD + 'px';
+      let html = '';
+      if (n.leaf) {
+        n.keys.forEach((k) => {
+          const cls = opts.keyClass ? opts.keyClass(n, k) : '';
+          html += `<span class="bt-key ${cls}" style="width:${L.keyW}px">${k}</span>`;
+        });
+      } else {
+        for (let i = 0; i <= n.keys.length; i++) {
+          html += `<span class="bt-ptr" style="width:${PTR_W}px"></span>`;
+          if (i < n.keys.length) {
+            const cls = opts.keyClass ? opts.keyClass(n, n.keys[i]) : '';
+            html += `<span class="bt-key ${cls}" style="width:${L.keyW}px">${n.keys[i]}</span>`;
+          }
+        }
+      }
+      cells.innerHTML = html;
+      el.appendChild(cells);
+      world.appendChild(el);
+    }
+
+    /* 컨테이너 폭에 맞춰 축소 */
+    const fit = () => {
+      const avail = Math.max(160, host.clientWidth - 8);
+      const s = Math.min(1, avail / L.totalW);
+      world.style.transformOrigin = 'top left';
+      world.style.transform = `translateX(${Math.max(0, (avail - L.totalW * s) / 2)}px) scale(${s})`;
+      host.style.height = ((L.totalH + 34) * s) + 'px';
+    };
+    fit();
+    return fit;
   }
 
   /* ═══════════════════════════════════════════════════
@@ -715,5 +926,60 @@
     /* ── 시작 ── */
     syncParamUI();
     setUiMode('demo');
+
+    /* ══════════ B-Tree vs B+Tree 대조도 ══════════ */
+    (function comparison() {
+      const hostB = $('cmpBtree');
+      const hostP = $('cmpBplus');
+      if (!hostB || !hostP) return;
+
+      const KEYS = [10, 20, 30, 40, 50, 60, 70];
+      const build = (mode) => {
+        const t = new BTree({ order: 4, mode });
+        t.bulkLoad(KEYS);
+        return t.snapshot();
+      };
+
+      /* diff 1 = 내부 노드, 2 = 리프, 3 = 리프 링크, 4/5 = 내부 노드 키 */
+      const opts = (mode) => ({
+        diffOf: (n) => (n.depth === 0 ? '1' : '2'),
+        keyClass: (n, k) => {
+          if (n.depth !== 0) return '';
+          return mode === 'btree' ? 'bt-key--data' : 'bt-key--sep';
+        },
+      });
+
+      const fitB = renderStatic(hostB, build('btree'), opts('btree'));
+      const fitP = renderStatic(hostP, build('bplus'), opts('bplus'));
+      /* 링크 없음 배지는 렌더 후 다시 붙인다 */
+      const none = document.createElement('span');
+      none.className = 'cmp-none';
+      none.dataset.diff = '3';
+      none.textContent = '리프 링크 없음';
+      hostB.appendChild(none);
+
+      let rt = null;
+      window.addEventListener('resize', () => {
+        clearTimeout(rt);
+        rt = setTimeout(() => { fitB(); fitP(); }, 150);
+      });
+
+      const MAP = { 1: ['1'], 2: ['2'], 3: ['3'], 4: ['1'], 5: ['1'] };
+      const setOn = (targets, on) => {
+        (targets || []).forEach((d) => {
+          document.querySelectorAll(`.cmp [data-diff="${d}"], .cmp-none[data-diff="${d}"]`)
+            .forEach((el) => el.classList.toggle('diff-on', on));
+        });
+      };
+      document.querySelectorAll('.cmp-note').forEach((note) => {
+        const targets = MAP[note.dataset.target] || [];
+        const on = () => setOn(targets, true);
+        const off = () => setOn(targets, false);
+        note.addEventListener('mouseenter', on);
+        note.addEventListener('mouseleave', off);
+        note.addEventListener('focus', on);
+        note.addEventListener('blur', off);
+      });
+    })();
   });
 })();
