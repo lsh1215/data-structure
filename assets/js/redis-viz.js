@@ -4,7 +4,7 @@
 (function () {
   'use strict';
 
-  const { RedisDict, STAGES } = window.RedisLib;
+  const { RedisDict, STAGES, fnv1a } = window.RedisLib;
 
   const COL = 98;        // 버킷 열 간격
   const SLOT_W = 88;
@@ -263,6 +263,171 @@
       }
     }
 
+    /* ══════════ 공용 헬퍼 ══════════ */
+    function clearView() {
+      views.forEach((v) => v.el.remove()); views.clear();
+      bucketEls.forEach((v) => v.remove()); bucketEls.clear();
+      nullEls.forEach((v) => v.remove()); nullEls.clear();
+      labelEls.forEach((v) => v.remove()); labelEls.clear();
+    }
+
+    /* 지정한 키와 같은 버킷으로 떨어지는 키를 찾는다 (충돌 시연용) */
+    function collidingKey(withKey) {
+      const mask = dict.ht[0].sizemask;
+      const target = fnv1a(withKey) & mask;
+      for (let i = 1; i < 4000; i++) {
+        const cand = 'sess:' + i;
+        if ((fnv1a(cand) & mask) === target && !dict.findEntry(cand)) return cand;
+      }
+      return 'sess:x';
+    }
+
+    /* ══════════ 데모 시나리오 ══════════ */
+    const SCENARIO = [
+      {
+        title: '빈 해시 테이블에 첫 키를 넣는다',
+        note: 'size 8 짜리 버킷 배열에서 시작한다. 키를 해시하고 sizemask 와 AND 해서 버킷 번호를 구한 뒤, dictEntry 를 만들어 그 칸에 매단다.',
+        ops: [{ t: 'reset' }, { t: 'set', k: 'user:1', v: 'sanghun' }],
+      },
+      {
+        title: '키가 늘어도 계산은 똑같다',
+        note: '해시가 다르면 대체로 다른 버킷으로 간다. 체인 길이가 1이면 조회는 포인터 한 번으로 끝난다 — 이것이 Redis 가 O(1)인 이유다.',
+        ops: [{ t: 'set', k: 'user:2', v: 'jieun' }, { t: 'set', k: 'cart:1001', v: '3' }],
+      },
+      {
+        title: '충돌 — 해시가 달라도 버킷은 같을 수 있다',
+        note: 'sizemask 로 하위 비트만 남기기 때문에 전혀 다른 해시가 같은 칸에 떨어진다. 새 엔트리는 체인의 맨 앞에 붙는다. 꼬리까지 갈 필요가 없어 O(1) 이다.',
+        ops: [{ t: 'collide', with: 'user:1', v: 'active' }],
+      },
+      {
+        title: '조회는 버킷을 찾고 체인을 훑는다',
+        note: '해시가 같아도 키가 다를 수 있으니 반드시 문자열 비교까지 한다. 체인이 길어질수록 이 비교가 늘어나므로 load factor 관리가 곧 성능 관리다.',
+        ops: [{ t: 'get', k: 'user:1' }],
+      },
+      {
+        title: 'load factor 가 1 에 닿는 순간 확장',
+        note: 'used 가 size 와 같아지면 ht[1] 을 두 배 크기로 새로 할당하고 rehashidx 를 0 으로 놓는다. 이 시점에 옮겨진 엔트리는 아직 하나도 없다.',
+        ops: [
+          { t: 'set', k: 'post:777', v: 'hello world' },
+          { t: 'set', k: 'rank:global', v: '42' },
+          { t: 'set', k: 'token:x9', v: 'expired' },
+          { t: 'set', k: 'flag:beta', v: '1' },
+        ],
+      },
+      {
+        title: '점진적 리해싱 — 명령마다 한 칸씩',
+        note: '명령이 올 때마다 ht[0] 의 버킷 하나를 ht[1] 로 옮긴다. 새로 들어오는 키는 무조건 ht[1] 로 간다. 그래서 ht[0] 은 단조 감소하고 반드시 끝난다.',
+        ops: [{ t: 'set', k: 'color:bg', v: '#060810' }, { t: 'get', k: 'user:2' }, { t: 'set', k: 'count:visit', v: '12345' }],
+      },
+      {
+        title: '이사 완료 — ht[1] 이 ht[0] 이 된다',
+        note: 'ht[0] 이 비면 해제하고 ht[1] 을 승격시킨다. 이 시점부터 sizemask 는 다시 하나뿐이다. 1000만 키를 옮기는 동안에도 서버는 한 번도 멈추지 않았다.',
+        ops: [{ t: 'finish' }],
+      },
+      {
+        title: '삭제 — 체인에서 떼어낸다',
+        note: '단일 연결 리스트라서 앞 엔트리의 next 를 뒤 엔트리로 이어준 뒤 dictEntry 를 해제한다. 그래서 삭제하려면 체인을 앞에서부터 훑어야 한다.',
+        ops: [{ t: 'del', k: 'user:1' }],
+      },
+    ];
+
+    let uiMode = 'demo';
+    let chapter = 0;
+
+    function idleSnap(msg, kind) {
+      return { kind: kind || 'idle', stage: -1, msg, detail: '', deco: {}, snap: dict.snapshot(), stats: dict.stats };
+    }
+
+    function runOp(op) {
+      if (op.t === 'reset') {
+        dict.reset(8);
+        dict.canResize = true;
+        clearView();
+        return [idleSnap('size 8 짜리 빈 dict 에서 시작한다')];
+      }
+      if (op.t === 'set') return dict.set(op.k, op.v);
+      if (op.t === 'collide') return dict.set(collidingKey(op.with), op.v);
+      if (op.t === 'get') return dict.get(op.k);
+      if (op.t === 'del') return dict.del(op.k);
+      if (op.t === 'finish') { dict.steps = []; dict.rehashAll(); return dict.steps.length ? dict.steps : [idleSnap('리해싱할 것이 남아 있지 않다')]; }
+      return [];
+    }
+
+    function applyQuiet(ops) {
+      for (const op of ops) {
+        if (op.t === 'reset') { dict.reset(8); dict.canResize = true; clearView(); continue; }
+        dict.quiet = true;
+        if (op.t === 'set') dict.set(op.k, op.v);
+        else if (op.t === 'collide') dict.set(collidingKey(op.with), op.v);
+        else if (op.t === 'get') dict.get(op.k);
+        else if (op.t === 'del') dict.del(op.k);
+        else if (op.t === 'finish') dict.rehashAll();
+        dict.quiet = false;
+      }
+    }
+
+    function setChapter(i) {
+      chapter = i;
+      const act = SCENARIO[i];
+      $('rChapNo').textContent = `CHAPTER ${String(i + 1).padStart(2, '0')} / ${String(SCENARIO.length).padStart(2, '0')}`;
+      $('rChapTitle').textContent = act.title;
+      $('rChapNote').textContent = act.note;
+      $('rChapSel').value = String(i);
+    }
+
+    function enqueueAct(i) {
+      const act = SCENARIO[i];
+      enqueue(() => { setChapter(i); return [idleSnap(act.note)]; });
+      act.ops.forEach((op) => enqueue(() => runOp(op)));
+    }
+
+    function runDemo(from) {
+      pause();
+      queue.length = 0;
+      steps = []; idx = -1;
+      const start = from || 0;
+      dict.reset(8);
+      dict.canResize = true;
+      clearView();
+      for (let i = 0; i < start; i++) applyQuiet(SCENARIO[i].ops);
+      for (let i = start; i < SCENARIO.length; i++) enqueueAct(i);
+    }
+
+    $('rChapSel').innerHTML = SCENARIO
+      .map((a, i) => `<option value="${i}">${String(i + 1).padStart(2, '0')}. ${a.title}</option>`)
+      .join('');
+    $('rChapSel').addEventListener('change', (e) => runDemo(parseInt(e.target.value, 10)));
+    $('rRestart').addEventListener('click', () => runDemo(0));
+    $('rChapPrev').addEventListener('click', () => runDemo(Math.max(0, chapter - 1)));
+    $('rChapNext').addEventListener('click', () => runDemo(Math.min(SCENARIO.length - 1, chapter + 1)));
+
+    function setUiMode(m) {
+      uiMode = m;
+      document.querySelectorAll('#rUiToggle button').forEach((b) => {
+        b.setAttribute('aria-pressed', String(b.dataset.ui === m));
+      });
+      document.querySelectorAll('.r-demo').forEach((el) => { el.hidden = m !== 'demo'; });
+      document.querySelectorAll('.r-lab').forEach((el) => { el.hidden = m !== 'lab'; });
+      if (m === 'demo') runDemo(0);
+      else {
+        pause();
+        queue.length = 0;
+        dict.reset(4);
+        dict.canResize = !$('rBgsave').checked;
+        clearView();
+        sampleIdx = 3;
+        steps = []; idx = -1;
+        dict.bulkSet([['user:1', 'sanghun'], ['user:2', 'jieun'], ['cart:1001', '3']]);
+        render(idleSnap('실험실 — 명령을 직접 날려보세요 (SET key value / GET key / DEL key)'));
+        $('rStep').textContent = 'step 0 / 0';
+        $('rBar').style.width = '0%';
+      }
+    }
+    document.querySelectorAll('#rUiToggle button').forEach((b) => {
+      b.addEventListener('click', () => setUiMode(b.dataset.ui));
+    });
+
+    /* ══════════ 실험실 컨트롤 ══════════ */
     const SAMPLE = [
       ['user:1', 'sanghun'], ['user:2', 'jieun'], ['user:3', 'minsu'],
       ['session:ab12', 'active'], ['cart:1001', '3'], ['rank:global', '42'],
@@ -305,10 +470,7 @@
       queue.length = 0;
       dict.reset(4);
       dict.canResize = !$('rBgsave').checked;
-      views.forEach((v) => v.el.remove()); views.clear();
-      bucketEls.forEach((v) => v.remove()); bucketEls.clear();
-      nullEls.forEach((v) => v.remove()); nullEls.clear();
-      labelEls.forEach((v) => v.remove()); labelEls.clear();
+      clearView();
       sampleIdx = 0;
       steps = []; idx = -1;
       renderIdle();
@@ -316,6 +478,7 @@
       $('rBar').style.width = '0%';
     });
 
+    /* ══════════ 재생 컨트롤 (공용) ══════════ */
     $('rPlay').addEventListener('click', () => {
       if (playing) pause();
       else if (idx >= steps.length - 1 && steps.length) { idx = 0; show(0); play(); }
@@ -330,9 +493,6 @@
 
     window.addEventListener('resize', () => { if (steps[idx]) render(steps[idx]); else renderIdle(); });
 
-    /* 초기: 몇 개 채워두고 시작 */
-    dict.bulkSet([['user:1', 'sanghun'], ['user:2', 'jieun'], ['cart:1001', '3']]);
-    sampleIdx = 3;
-    renderIdle();
+    setUiMode('demo');
   });
 })();

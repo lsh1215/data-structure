@@ -65,26 +65,55 @@
       <div class="tokens" id="esTokens"></div>
 
       <div class="viz__bar">
+        <div class="segmented" id="esUiToggle" role="group" aria-label="보기 모드">
+          <button type="button" data-ui="demo" aria-pressed="true">▶ 데모</button>
+          <button type="button" data-ui="lab" aria-pressed="false">🧪 실험실</button>
+        </div>
+        <span class="mono muted" style="font-size:11.5px">데모는 준비된 시나리오를 재생하고, 실험실에서는 직접 문서를 색인하고 검색할 수 있습니다</span>
+      </div>
+
+      <div class="chapter-bar es-demo">
+        <div class="chapter-bar__no" id="esChapNo">CHAPTER 01 / 06</div>
+        <div class="chapter-bar__body">
+          <div class="chapter-bar__t" id="esChapTitle">—</div>
+          <div class="chapter-bar__d" id="esChapNote">—</div>
+        </div>
+      </div>
+
+      <div class="viz__bar es-demo">
+        <button class="btn btn--sm" id="esChapPrev" type="button">◀ 이전 장</button>
+        <select class="select" id="esChapSel" aria-label="시나리오 장 선택" style="min-width:250px"></select>
+        <button class="btn btn--sm" id="esChapNext" type="button">다음 장 ▶</button>
+        <div class="viz__sep" aria-hidden="true"></div>
+        <button class="btn btn--sm" id="esRestart" type="button">⏮ 처음부터</button>
+      </div>
+
+      <div class="viz__bar es-lab" hidden>
         <input class="input" id="esInput" type="text" placeholder="색인할 문서를 입력하세요" style="flex:1;min-width:220px" aria-label="문서 입력" />
         <button class="btn btn--primary" id="esAdd" type="button">＋ 색인</button>
         <button class="btn btn--sm" id="esSeed" type="button">예제 문서 추가</button>
         <button class="btn btn--sm btn--danger" id="esReset" type="button">초기화</button>
       </div>
 
-      <div class="viz__bar">
+      <div class="viz__bar es-lab" hidden>
         <input class="input" id="esQuery" type="text" value="hash table" placeholder="검색어" style="min-width:200px" aria-label="검색어" />
         <div class="segmented" id="esMode" role="group" aria-label="불리언 모드">
           <button type="button" data-mode="AND" aria-pressed="true">AND</button>
           <button type="button" data-mode="OR" aria-pressed="false">OR</button>
         </div>
         <button class="btn btn--primary" id="esSearch" type="button">🔎 검색</button>
-        <div class="topbar__spacer"></div>
-        <button class="btn btn--sm" id="esPrev" type="button">◀</button>
-        <button class="btn btn--sm" id="esPlay" type="button">▶ 재생</button>
-        <button class="btn btn--sm" id="esNext" type="button">▶</button>
+      </div>
+
+      <div class="viz__bar">
+        <button class="btn btn--sm" id="esPrev" type="button">◀ 이전</button>
+        <button class="btn btn--sm btn--primary" id="esPlay" type="button">▶ 재생</button>
+        <button class="btn btn--sm" id="esNext" type="button">다음 ▶</button>
         <span class="mono muted" id="esStep" style="font-size:11px">step 0 / 0</span>
-        <span class="narr__bar" style="max-width:130px"><span class="narr__bar-fill" id="esBar"></span></span>
-        <input type="range" id="esSpeed" min="0.4" max="4" step="0.2" value="1.6" aria-label="속도" />
+        <span class="narr__bar" style="max-width:180px"><span class="narr__bar-fill" id="esBar"></span></span>
+        <div class="topbar__spacer"></div>
+        <label class="field">속도
+          <input type="range" id="esSpeed" min="0.4" max="4" step="0.2" value="1.6" aria-label="속도" />
+        </label>
       </div>
 
       <div class="es-grid">
@@ -224,11 +253,13 @@ b  = 0.75  <span class="cm">// 문서 길이 정규화 강도. 0이면 길이 �
 
     <div class="viz">
       <div class="viz__bar">
-        <button class="btn btn--primary" id="segIndex" type="button">문서 3개 색인</button>
-        <button class="btn" id="segRefresh" type="button">refresh (1s)</button>
-        <button class="btn" id="segFlush" type="button">flush</button>
-        <button class="btn" id="segMerge" type="button">merge</button>
-        <button class="btn" id="segDelete" type="button">문서 삭제</button>
+        <button class="btn btn--primary" id="segDemo" type="button">▶ 시나리오 재생</button>
+        <div class="viz__sep" aria-hidden="true"></div>
+        <button class="btn btn--sm" id="segIndex" type="button">문서 3개 색인</button>
+        <button class="btn btn--sm" id="segRefresh" type="button">refresh (1s)</button>
+        <button class="btn btn--sm" id="segFlush" type="button">flush</button>
+        <button class="btn btn--sm" id="segMerge" type="button">merge</button>
+        <button class="btn btn--sm" id="segDelete" type="button">문서 삭제</button>
         <div class="topbar__spacer"></div>
         <span class="mono muted" style="font-size:11px">세그먼트 <b id="segCount">0</b> · live <b id="segLive">0</b> · 삭제표시 <b id="segDel">0</b></span>
         <button class="btn btn--sm btn--danger" id="segReset" type="button">초기화</button>

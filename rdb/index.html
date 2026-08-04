@@ -60,8 +60,41 @@
     </div>
 
     <div class="viz">
-      <!-- 컨트롤 1 -->
+      <!-- 모드 전환 -->
       <div class="viz__bar">
+        <div class="segmented" id="uiToggle" role="group" aria-label="보기 모드">
+          <button type="button" data-ui="demo" aria-pressed="true">▶ 데모</button>
+          <button type="button" data-ui="lab" aria-pressed="false">🧪 실험실</button>
+        </div>
+        <span class="mono muted" style="font-size:11.5px">데모는 준비된 시나리오를 순서대로 재생하고, 실험실에서는 직접 값을 넣어볼 수 있습니다</span>
+
+        <div class="topbar__spacer"></div>
+
+        <label class="field">속도
+          <input type="range" id="speed" min="0.4" max="4" step="0.2" value="1.4" aria-label="애니메이션 속도" />
+          <span class="mono acc" id="speedVal">1.4×</span>
+        </label>
+      </div>
+
+      <!-- 데모: 챕터 -->
+      <div class="chapter-bar ui-demo">
+        <div class="chapter-bar__no" id="chapNo">CHAPTER 01 / 08</div>
+        <div class="chapter-bar__body">
+          <div class="chapter-bar__t" id="chapTitle">—</div>
+          <div class="chapter-bar__d" id="chapNote">—</div>
+        </div>
+      </div>
+
+      <div class="viz__bar ui-demo">
+        <button class="btn btn--sm" id="btnChapPrev" type="button">◀ 이전 장</button>
+        <select class="select" id="chapSel" aria-label="시나리오 장 선택" style="min-width:230px"></select>
+        <button class="btn btn--sm" id="btnChapNext" type="button">다음 장 ▶</button>
+        <div class="viz__sep" aria-hidden="true"></div>
+        <button class="btn btn--sm" id="btnRestart" type="button">⏮ 처음부터</button>
+      </div>
+
+      <!-- 실험실: 컨트롤 1 -->
+      <div class="viz__bar ui-lab" hidden>
         <div class="segmented" id="modeToggle" role="group" aria-label="트리 종류">
           <button type="button" data-mode="bplus" aria-pressed="true">B+Tree</button>
           <button type="button" data-mode="btree" aria-pressed="false">B-Tree</button>
@@ -82,14 +115,10 @@
 
         <div class="topbar__spacer"></div>
 
-        <label class="field">속도
-          <input type="range" id="speed" min="0.4" max="4" step="0.2" value="1.4" aria-label="애니메이션 속도" />
-          <span class="mono acc" id="speedVal">1.4×</span>
-        </label>
       </div>
 
-      <!-- 컨트롤 2 -->
-      <div class="viz__bar">
+      <!-- 실험실: 컨트롤 2 -->
+      <div class="viz__bar ui-lab" hidden>
         <input class="input input--num" id="keyInput" type="text" placeholder="42" aria-label="키 값" style="width:120px" />
         <button class="btn btn--primary" id="btnInsert" type="button">＋ 삽입</button>
         <button class="btn" id="btnDelete" type="button">− 삭제</button>

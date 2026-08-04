@@ -65,6 +65,30 @@
       <div class="pipe" id="pipe"></div>
 
       <div class="viz__bar">
+        <div class="segmented" id="rUiToggle" role="group" aria-label="보기 모드">
+          <button type="button" data-ui="demo" aria-pressed="true">▶ 데모</button>
+          <button type="button" data-ui="lab" aria-pressed="false">🧪 실험실</button>
+        </div>
+        <span class="mono muted" style="font-size:11.5px">데모는 준비된 시나리오를 재생하고, 실험실에서는 직접 명령을 날려볼 수 있습니다</span>
+      </div>
+
+      <div class="chapter-bar r-demo">
+        <div class="chapter-bar__no" id="rChapNo">CHAPTER 01 / 08</div>
+        <div class="chapter-bar__body">
+          <div class="chapter-bar__t" id="rChapTitle">—</div>
+          <div class="chapter-bar__d" id="rChapNote">—</div>
+        </div>
+      </div>
+
+      <div class="viz__bar r-demo">
+        <button class="btn btn--sm" id="rChapPrev" type="button">◀ 이전 장</button>
+        <select class="select" id="rChapSel" aria-label="시나리오 장 선택" style="min-width:250px"></select>
+        <button class="btn btn--sm" id="rChapNext" type="button">다음 장 ▶</button>
+        <div class="viz__sep" aria-hidden="true"></div>
+        <button class="btn btn--sm" id="rRestart" type="button">⏮ 처음부터</button>
+      </div>
+
+      <div class="viz__bar r-lab" hidden>
         <input class="input" id="rCmd" type="text" placeholder="SET user:9 hello" style="min-width:250px;flex:1" aria-label="Redis 명령" />
         <button class="btn btn--primary" id="rRun" type="button">실행 ▷</button>
         <div class="viz__sep" aria-hidden="true"></div>
@@ -303,17 +327,40 @@ databasesCron()     <span class="cm">// 유휴 시간에 1ms 동안</span>
 
     <div class="viz">
       <div class="viz__bar">
-        <input class="input" id="slInput" type="text" placeholder="30 eve  (score member)" style="min-width:190px" aria-label="score member" />
-        <button class="btn btn--primary" id="slAdd" type="button">ZADD ＋</button>
-        <button class="btn btn--sm" id="slFind" type="button">🔎 탐색</button>
-        <button class="btn btn--sm" id="slDel" type="button">랜덤 삭제</button>
-        <button class="btn btn--sm btn--danger" id="slReset" type="button">초기화</button>
+        <div class="segmented" id="slUiToggle" role="group" aria-label="보기 모드">
+          <button type="button" data-ui="demo" aria-pressed="true">▶ 데모</button>
+          <button type="button" data-ui="lab" aria-pressed="false">🧪 실험실</button>
+        </div>
         <div class="topbar__spacer"></div>
         <button class="btn btn--sm" id="slPrev" type="button">◀</button>
         <button class="btn btn--sm btn--primary" id="slPlay" type="button">▶ 재생</button>
         <button class="btn btn--sm" id="slNext" type="button">▶</button>
         <span class="mono muted" id="slStep" style="font-size:11px">step 0 / 0</span>
         <input type="range" id="slSpeed" min="0.4" max="4" step="0.2" value="1.6" aria-label="속도" />
+      </div>
+
+      <div class="chapter-bar sl-demo">
+        <div class="chapter-bar__no" id="slChapNo">CHAPTER 01 / 07</div>
+        <div class="chapter-bar__body">
+          <div class="chapter-bar__t" id="slChapTitle">—</div>
+          <div class="chapter-bar__d" id="slChapNote">—</div>
+        </div>
+      </div>
+
+      <div class="viz__bar sl-demo">
+        <button class="btn btn--sm" id="slChapPrev" type="button">◀ 이전 장</button>
+        <select class="select" id="slChapSel" aria-label="시나리오 장 선택" style="min-width:250px"></select>
+        <button class="btn btn--sm" id="slChapNext" type="button">다음 장 ▶</button>
+        <div class="viz__sep" aria-hidden="true"></div>
+        <button class="btn btn--sm" id="slRestart" type="button">⏮ 처음부터</button>
+      </div>
+
+      <div class="viz__bar sl-lab" hidden>
+        <input class="input" id="slInput" type="text" placeholder="30 eve  (score member)" style="min-width:190px" aria-label="score member" />
+        <button class="btn btn--primary" id="slAdd" type="button">ZADD ＋</button>
+        <button class="btn btn--sm" id="slFind" type="button">🔎 탐색</button>
+        <button class="btn btn--sm" id="slDel" type="button">랜덤 삭제</button>
+        <button class="btn btn--sm btn--danger" id="slReset" type="button">초기화</button>
       </div>
 
       <div class="sl-stage" id="slStage">

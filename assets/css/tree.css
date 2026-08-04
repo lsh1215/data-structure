@@ -495,3 +495,51 @@
   margin-bottom: 2px;
 }
 
+
+/* ─────────────────────────────────
+   데모 챕터 바 (공용)
+───────────────────────────────── */
+.ui-demo[hidden], .ui-lab[hidden] { display: none !important; }
+
+.chapter-bar {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-4);
+  padding: var(--sp-4) var(--sp-5);
+  border-bottom: 1px solid var(--bg-border);
+  background:
+    linear-gradient(90deg, var(--accent-dim) 0%, transparent 62%),
+    rgba(255,255,255,.012);
+}
+.chapter-bar__no {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: .1em;
+  color: var(--accent);
+  padding: 5px 10px;
+  border: 1px solid var(--accent-border);
+  border-radius: 100px;
+  background: var(--accent-dim);
+  white-space: nowrap;
+  margin-top: 1px;
+}
+.chapter-bar__body { min-width: 0; }
+.chapter-bar__t {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -.02em;
+  color: var(--text-primary);
+  line-height: 1.35;
+}
+.chapter-bar__d {
+  font-size: 13.5px;
+  color: var(--text-secondary);
+  line-height: 1.7;
+  margin-top: 3px;
+}
+
+@media (max-width: 640px) {
+  .chapter-bar { flex-direction: column; gap: var(--sp-2); }
+}

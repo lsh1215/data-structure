@@ -184,7 +184,146 @@
       }
     }
 
-    /* ── 컨트롤 ── */
+    /* ══════════ 데모 시나리오 ══════════ */
+    function mulberry32(a) {
+      return function () {
+        a |= 0; a = (a + 0x6D2B79F5) | 0;
+        let t = Math.imul(a ^ (a >>> 15), 1 | a);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+    const DEMO_SEED = 12; /* 레벨이 1,2,1,3,1,1 로 나와 설명하기 좋은 시드 */
+
+    const SCENARIO = [
+      {
+        title: '연결 리스트 한 줄에서 시작한다',
+        note: '가장 아래층(L1)에는 모든 원소가 정렬된 채로 들어간다. 여기까지는 그냥 정렬된 연결 리스트다.',
+        ops: [{ t: 'reset' }, { t: 'add', s: 10, m: 'alice' }],
+      },
+      {
+        title: '정렬 위치를 찾아 끼워 넣는다',
+        note: 'HEAD 에서 오른쪽으로 달리다가 다음 원소가 더 크면 멈춘다. 그 자리가 새 원소가 들어갈 곳이다. 회전(rotation)도 재균형도 없다.',
+        ops: [{ t: 'add', s: 25, m: 'bob' }, { t: 'add', s: 40, m: 'carol' }],
+      },
+      {
+        title: '동전을 던져 층을 정한다',
+        note: '1/4 확률로 계속 올라간다. 운 좋게 높은 층이 나온 노드는 아래층 원소들을 건너뛰는 고속도로가 된다. 평균 레벨은 1/(1−0.25) = 1.33 이다.',
+        ops: [{ t: 'add', s: 55, m: 'dave' }],
+      },
+      {
+        title: '원소가 늘어나도 규칙은 같다',
+        note: '층이 높은 노드가 드문드문 생기면서 자연스럽게 이진 탐색과 비슷한 모양이 만들어진다. 아무도 균형을 맞춰주지 않는데 기대값으로 균형이 잡힌다.',
+        ops: [{ t: 'add', s: 70, m: 'erin' }, { t: 'add', s: 85, m: 'frank' }],
+      },
+      {
+        title: '탐색 — 위층에서 건너뛰고 막히면 내려온다',
+        note: '최상위 층에서 오른쪽으로 달리다가 더 못 가면 한 층 내려간다. 이 과정이 O(log₄ N) 이고, 탐색은 항상 모든 원소가 있는 L1 에서 끝난다.',
+        ops: [{ t: 'find', s: 70 }],
+      },
+      {
+        title: 'span — 몇 칸을 건너뛰었는지 센다',
+        note: '각 포인터에는 건너뛴 칸 수(span)가 함께 저장된다. 탐색하며 span 을 더하면 그 원소가 몇 번째인지 바로 나온다. ZRANK 와 ZRANGE 가 빠른 이유다.',
+        ops: [{ t: 'find', s: 85 }],
+      },
+      {
+        title: '삭제 — 층마다 포인터만 이어준다',
+        note: '지울 노드가 속한 층마다 앞 노드의 forward 를 뒤 노드로 연결하고 span 을 합친다. 트리처럼 구조를 다시 맞출 일이 없다.',
+        ops: [{ t: 'del', m: 'carol' }],
+      },
+    ];
+
+    let uiMode = 'demo';
+    let chapter = 0;
+
+    function idleSnap(msg) {
+      return { kind: 'idle', msg, detail: '', deco: {}, snap: sl.snapshot() };
+    }
+
+    function resetList(seeded) {
+      const fresh = new SkipList(seeded ? mulberry32(DEMO_SEED) : Math.random);
+      Object.assign(sl, fresh);
+      cellEls.forEach((e) => e.remove()); cellEls.clear();
+      labelEls.forEach((e) => e.remove()); labelEls.clear();
+      arrowEls.forEach((e) => e.remove()); arrowEls.clear();
+      lvlEls.forEach((e) => e.remove()); lvlEls.clear();
+      $('slDice').innerHTML = '';
+    }
+
+    function runOp(op) {
+      if (op.t === 'reset') { resetList(true); return [idleSnap('빈 skiplist — HEAD 만 있다')]; }
+      if (op.t === 'add') return sl.insert(op.s, op.m);
+      if (op.t === 'find') return sl.search(op.s);
+      if (op.t === 'del') return sl.remove(op.m);
+      return [];
+    }
+
+    function applyQuiet(ops) {
+      for (const op of ops) {
+        if (op.t === 'reset') { resetList(true); continue; }
+        sl.quiet = true;
+        if (op.t === 'add') sl.insert(op.s, op.m);
+        else if (op.t === 'del') sl.remove(op.m);
+        sl.quiet = false;
+      }
+    }
+
+    function setChapter(k) {
+      chapter = k;
+      const act = SCENARIO[k];
+      $('slChapNo').textContent = `CHAPTER ${String(k + 1).padStart(2, '0')} / ${String(SCENARIO.length).padStart(2, '0')}`;
+      $('slChapTitle').textContent = act.title;
+      $('slChapNote').textContent = act.note;
+      $('slChapSel').value = String(k);
+    }
+
+    function enqueueAct(k) {
+      const act = SCENARIO[k];
+      enqueue(() => { setChapter(k); return [idleSnap(act.note)]; });
+      act.ops.forEach((op) => enqueue(() => runOp(op)));
+    }
+
+    function runDemo(from) {
+      pause();
+      queue.length = 0;
+      steps = []; i = -1;
+      const start = from || 0;
+      resetList(true);
+      for (let k = 0; k < start; k++) applyQuiet(SCENARIO[k].ops);
+      for (let k = start; k < SCENARIO.length; k++) enqueueAct(k);
+    }
+
+    $('slChapSel').innerHTML = SCENARIO
+      .map((a, k) => `<option value="${k}">${String(k + 1).padStart(2, '0')}. ${a.title}</option>`)
+      .join('');
+    $('slChapSel').addEventListener('change', (e) => runDemo(parseInt(e.target.value, 10)));
+    $('slRestart').addEventListener('click', () => runDemo(0));
+    $('slChapPrev').addEventListener('click', () => runDemo(Math.max(0, chapter - 1)));
+    $('slChapNext').addEventListener('click', () => runDemo(Math.min(SCENARIO.length - 1, chapter + 1)));
+
+    function setUiMode(m) {
+      uiMode = m;
+      document.querySelectorAll('#slUiToggle button').forEach((b) => {
+        b.setAttribute('aria-pressed', String(b.dataset.ui === m));
+      });
+      document.querySelectorAll('.sl-demo').forEach((el) => { el.hidden = m !== 'demo'; });
+      document.querySelectorAll('.sl-lab').forEach((el) => { el.hidden = m !== 'lab'; });
+      if (m === 'demo') runDemo(0);
+      else {
+        pause();
+        queue.length = 0;
+        steps = []; i = -1;
+        resetList(false);
+        mi = 4;
+        sl.bulk([[10, 'alice'], [25, 'bob'], [40, 'carol'], [55, 'dave']]);
+        render(idleSnap('실험실 — score 와 member 를 넣어보세요'));
+      }
+    }
+    document.querySelectorAll('#slUiToggle button').forEach((b) => {
+      b.addEventListener('click', () => setUiMode(b.dataset.ui));
+    });
+
+    /* ══════════ 실험실 컨트롤 ══════════ */
     const MEMBERS = ['alice', 'bob', 'carol', 'dave', 'erin', 'frank', 'grace', 'heidi', 'ivan', 'judy', 'ken', 'lily'];
     let mi = 0;
 
@@ -225,17 +364,12 @@
     $('slReset').addEventListener('click', () => {
       pause();
       queue.length = 0;
-      const fresh = new SkipList();
-      Object.assign(sl, fresh);
-      cellEls.forEach((e) => e.remove()); cellEls.clear();
-      labelEls.forEach((e) => e.remove()); labelEls.clear();
-      arrowEls.forEach((e) => e.remove()); arrowEls.clear();
-      lvlEls.forEach((e) => e.remove()); lvlEls.clear();
+      resetList(false);
       mi = 0; steps = []; i = -1;
-      $('slDice').innerHTML = '';
-      renderIdle();
+      render(idleSnap('초기화 완료 — ZADD 로 원소를 넣어보세요'));
     });
 
+    /* ══════════ 재생 컨트롤 (공용) ══════════ */
     $('slPlay').addEventListener('click', () => {
       if (playing) pause();
       else if (i >= steps.length - 1 && steps.length) { i = 0; show(0); play(); }
@@ -247,8 +381,6 @@
 
     window.addEventListener('resize', () => { if (steps[i]) render(steps[i]); else renderIdle(); });
 
-    sl.bulk([[10, 'alice'], [25, 'bob'], [40, 'carol'], [55, 'dave']]);
-    mi = 4;
-    renderIdle();
+    setUiMode('demo');
   });
 })();
