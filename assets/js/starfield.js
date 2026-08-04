@@ -1,29 +1,4 @@
 /* ═══════════════════════════════════════════════════════════
-   오래된 캐시본 부트스트랩 (starfield.js 안에 있는 이유)
-   - 배포된 문서는 <html data-build="..."> 를 갖는다. 그게 없다는 건
-     지금 보고 있는 HTML 이 스탬프 도입 이전의 브라우저 캐시본이라는 뜻이다.
-   - 그 옛 HTML 에는 version-check.js 참조 자체가 없다. 그래서 옛 페이지도
-     반드시 로드하는 이 파일에서 검사기를 끼워 넣는다.
-   - 로컬 개발 문서에도 스탬프가 없지만, version.json 이 없으므로
-     version-check.js 는 아무 일도 하지 않는다.
-═══════════════════════════════════════════════════════════ */
-(function () {
-  'use strict';
-
-  if (document.documentElement.dataset.build) return; // 최신 문서 — 이미 참조하고 있다
-  if (!/^https?:$/.test(location.protocol)) return;   // file:// 로컬 열람
-  if (document.querySelector('script[src*="version-check.js"]')) return;
-
-  const self = document.currentScript;
-  if (!self) return;
-  const root = self.src.replace(/assets\/js\/starfield\.js.*$/, '');
-
-  const s = document.createElement('script');
-  s.src = root + 'assets/js/version-check.js?boot=' + Date.now();
-  document.head.appendChild(s);
-})();
-
-/* ═══════════════════════════════════════════════════════════
    Ambient star field — shared background canvas
    Usage: <canvas class="star-field" id="starField"
                   data-colors="#00d9c0,#a855f7"></canvas>

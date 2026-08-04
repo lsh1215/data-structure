@@ -44,8 +44,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: 캐시 버스팅 스탬프 (CSS/JS 내용 해시 + version.json)
-        run: node scripts/stamp-assets.js "${GITHUB_SHA:0:8}"
+      - name: 캐시 버스팅 스탬프 (CSS/JS 내용 해시)
+        run: node scripts/stamp-assets.js
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
