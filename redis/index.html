@@ -63,71 +63,78 @@
 
     <div class="panel">
       <div class="anatomy-wrap">
-      <svg class="anatomy" viewBox="0 0 940 330" role="img" aria-label="Redis dict 구성 요소 해부도">
-        <!-- 왼쪽: 키 → 해시 → 인덱스 -->
-        <rect class="anat-box" x="24" y="56" width="126" height="40" rx="8" />
-        <text class="anat-key" x="87" y="77" style="font-size:13px">"user:1"</text>
-        <text class="anat-tag" x="24" y="46">키 (key)</text>
+      <svg class="anatomy" viewBox="0 0 1000 390" role="img" aria-label="Redis dict 구성 요소 해부도">
+        <!-- 키 → 해시 → 해시값 -->
+        <text class="anat-tag" x="24" y="52">키 (key)</text>
+        <rect class="anat-box" x="24" y="62" width="130" height="40" rx="8" />
+        <text class="anat-key" x="89" y="83" style="font-size:13px">"user:1"</text>
 
-        <path class="anat-edge" d="M 150 76 L 186 76" marker-end="" />
-        <polygon class="anat-dot" points="186,76 178,72 178,80" />
+        <path class="anat-edge" d="M 156 82 L 184 82" />
+        <polygon class="anat-dot" points="192,82 182,77 182,87" />
 
-        <rect class="anat-box anat-box--hi" x="192" y="56" width="120" height="40" rx="8" />
-        <text class="anat-key" x="252" y="77" style="font-size:12px">hash(key)</text>
-        <text class="anat-tag" x="192" y="46">해시 함수</text>
+        <text class="anat-tag" x="198" y="52">해시 함수</text>
+        <rect class="anat-box anat-box--hi" x="198" y="62" width="124" height="40" rx="8" />
+        <text class="anat-key" x="260" y="83" style="font-size:12px">hash(key)</text>
 
-        <path class="anat-edge" d="M 312 76 L 348 76" />
-        <polygon class="anat-dot" points="348,76 340,72 340,80" />
+        <path class="anat-edge" d="M 324 82 L 352 82" />
+        <polygon class="anat-dot" points="360,82 350,77 350,87" />
 
-        <rect class="anat-box" x="354" y="56" width="130" height="40" rx="8" />
-        <text class="anat-key" x="419" y="77" style="font-size:12px">0x3f2a1b9c</text>
-        <text class="anat-tag" x="354" y="46">해시값</text>
+        <text class="anat-tag" x="366" y="52">해시값</text>
+        <rect class="anat-box" x="366" y="62" width="134" height="40" rx="8" />
+        <text class="anat-key" x="433" y="83" style="font-size:12px">0x3f2a1b9c</text>
 
-        <path class="anat-edge" d="M 419 96 L 419 122" />
-        <rect class="anat-box" x="342" y="122" width="154" height="36" rx="8" />
-        <text class="anat-key" x="419" y="141" style="font-size:12px">&amp; sizemask (7)</text>
-        <text class="anat-sub" x="342" y="176">크기가 2의 거듭제곱이라 나눗셈 대신</text>
-        <text class="anat-sub" x="342" y="192">비트 AND 한 번으로 칸 번호가 나온다</text>
+        <!-- &amp; sizemask -->
+        <path class="anat-edge" d="M 433 102 L 433 134" />
+        <polygon class="anat-dot" points="433,142 428,132 438,132" />
+        <rect class="anat-box" x="356" y="142" width="154" height="38" rx="8" />
+        <text class="anat-key" x="433" y="162" style="font-size:12px">&amp; sizemask (7)</text>
 
-        <path class="anat-edge" d="M 496 140 C 540 140, 540 86, 578 86" />
-        <polygon class="anat-dot" points="578,86 570,82 570,90" />
+        <text class="anat-sub" x="24" y="152">배열 크기가 항상 2의 거듭제곱이라</text>
+        <text class="anat-sub" x="24" y="170">나눗셈 없이 비트 AND 한 번으로</text>
+        <text class="anat-sub" x="24" y="188">몇 번 칸인지가 나온다</text>
+
+        <path class="anat-edge" d="M 512 161 C 552 161, 552 92, 590 92" />
+        <polygon class="anat-dot" points="598,92 588,87 588,97" />
 
         <!-- 버킷 배열 -->
-        <text class="anat-tag" x="590" y="46">버킷 배열 (table)</text>
-        <rect class="anat-box" x="590" y="56" width="60" height="40" rx="7" />
-        <text class="anat-tag" x="612" y="81">[0]</text>
-        <rect class="anat-box" x="654" y="56" width="60" height="40" rx="7" />
-        <text class="anat-tag" x="676" y="81">[1]</text>
-        <rect class="anat-box anat-box--hi" x="718" y="56" width="60" height="40" rx="7" />
-        <text class="anat-tag" x="740" y="81" style="fill:var(--accent)">[2]</text>
-        <rect class="anat-box" x="782" y="56" width="60" height="40" rx="7" />
-        <text class="anat-tag" x="804" y="81">[3]</text>
-        <text class="anat-sub" x="856" y="81">…</text>
+        <text class="anat-tag" x="606" y="52">버킷 배열 (table)</text>
+        <rect class="anat-box" x="606" y="62" width="62" height="40" rx="7" />
+        <text class="anat-tag" x="626" y="87">[0]</text>
+        <rect class="anat-box" x="674" y="62" width="62" height="40" rx="7" />
+        <text class="anat-tag" x="694" y="87">[1]</text>
+        <rect class="anat-box anat-box--hi" x="742" y="62" width="62" height="40" rx="7" />
+        <text class="anat-tag" x="762" y="87" style="fill:var(--accent)">[2]</text>
+        <rect class="anat-box" x="810" y="62" width="62" height="40" rx="7" />
+        <text class="anat-tag" x="830" y="87">[3]</text>
+        <text class="anat-sub" x="886" y="88">…</text>
 
         <!-- 체인 -->
-        <path class="anat-edge" d="M 748 96 L 748 126" />
-        <polygon class="anat-dot" points="748,132 743,122 753,122" />
-        <rect class="anat-box anat-box--hi" x="668" y="132" width="160" height="52" rx="8" />
-        <text class="anat-key" x="748" y="150" style="font-size:12px">key: "user:1"</text>
-        <text class="anat-key" x="748" y="170" style="font-size:12px; fill:var(--text-secondary)">val: "sanghun"</text>
+        <path class="anat-edge" d="M 773 102 L 773 136" />
+        <polygon class="anat-dot" points="773,144 768,134 778,134" />
+        <rect class="anat-box anat-box--hi" x="693" y="144" width="160" height="54" rx="8" />
+        <text class="anat-key" x="773" y="164" style="font-size:12px">key: "user:1"</text>
+        <text class="anat-key" x="773" y="184" style="font-size:12px; fill:var(--text-secondary)">val: "sanghun"</text>
 
-        <path class="anat-edge" d="M 748 184 L 748 214" />
-        <polygon class="anat-dot" points="748,220 743,210 753,210" />
-        <rect class="anat-box" x="668" y="220" width="160" height="52" rx="8" />
-        <text class="anat-key" x="748" y="238" style="font-size:12px">key: "cart:9"</text>
-        <text class="anat-key" x="748" y="258" style="font-size:12px; fill:var(--text-secondary)">val: "3"</text>
-        <text class="anat-tag" x="838" y="252">next → NULL</text>
+        <path class="anat-edge" d="M 773 198 L 773 232" />
+        <polygon class="anat-dot" points="773,240 768,230 778,230" />
+        <rect class="anat-box" x="693" y="240" width="160" height="54" rx="8" />
+        <text class="anat-key" x="773" y="260" style="font-size:12px">key: "cart:9"</text>
+        <text class="anat-key" x="773" y="280" style="font-size:12px; fill:var(--text-secondary)">val: "3"</text>
+        <text class="anat-tag" x="773" y="318" text-anchor="middle">next → NULL</text>
 
-        <!-- 라벨 -->
-        <path class="anat-lead" d="M 668 158 L 600 158" />
-        <circle class="anat-dot" cx="668" cy="158" r="3" />
-        <text class="anat-label" x="592" y="154" text-anchor="end">dictEntry</text>
-        <text class="anat-sub" x="592" y="172" text-anchor="end">key · value · next 포인터 하나짜리 구조체</text>
+        <!-- dictEntry -->
+        <path class="anat-lead" d="M 664 202 L 689 192" />
+        <circle class="anat-dot" cx="691" cy="191" r="3" />
+        <text class="anat-label" x="656" y="200" text-anchor="end">dictEntry</text>
+        <text class="anat-sub" x="656" y="218" text-anchor="end">키 · 값 · next 포인터를</text>
+        <text class="anat-sub" x="656" y="236" text-anchor="end">담은 구조체 하나</text>
 
-        <path class="anat-lead" d="M 838 200 L 900 200" />
-        <circle class="anat-dot" cx="838" cy="200" r="3" />
-        <text class="anat-label" x="900" y="196" text-anchor="end">체인 (chain)</text>
-        <text class="anat-sub" x="900" y="300" text-anchor="end">같은 칸에 두 개 이상 매달린 상태 = 충돌</text>
+        <!-- 체인 라벨 -->
+        <path class="anat-lead" d="M 871 252 L 855 252" />
+        <circle class="anat-dot" cx="853" cy="252" r="3" />
+        <text class="anat-label" x="873" y="250">체인 (chain)</text>
+        <text class="anat-sub" x="873" y="270">같은 칸에 두 개 이상</text>
+        <text class="anat-sub" x="873" y="288">매달린 상태 = 충돌</text>
       </svg>
       </div>
 

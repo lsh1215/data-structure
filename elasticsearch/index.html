@@ -63,59 +63,62 @@
 
     <div class="panel">
       <div class="anatomy-wrap">
-      <svg class="anatomy" viewBox="0 0 940 320" role="img" aria-label="역색인 구성 요소 해부도">
+      <svg class="anatomy" viewBox="0 0 1000 380" role="img" aria-label="역색인 구성 요소 해부도">
         <!-- 문서 -->
-        <text class="anat-tag" x="24" y="46">문서 (document)</text>
-        <rect class="anat-box" x="24" y="56" width="250" height="44" rx="8" />
-        <text class="anat-key" x="149" y="79" style="font-size:12px">#0  "Hash Table Lookup"</text>
+        <text class="anat-tag" x="24" y="52">문서 (document)</text>
+        <rect class="anat-box" x="24" y="62" width="270" height="44" rx="8" />
+        <text class="anat-key" x="159" y="86" style="font-size:12px">#0  "Hash Table Lookup"</text>
 
-        <path class="anat-edge" d="M 149 100 L 149 128" />
-        <polygon class="anat-dot" points="149,134 144,124 154,124" />
+        <path class="anat-edge" d="M 159 106 L 159 138" />
+        <polygon class="anat-dot" points="159,146 154,136 164,136" />
 
         <!-- 토큰 -->
-        <text class="anat-tag" x="24" y="152">토큰 (token) — analyzer 가 쪼갠 조각</text>
-        <rect class="anat-box" x="24" y="162" width="74" height="34" rx="7" />
-        <text class="anat-key" x="61" y="180" style="font-size:12px">hash</text>
-        <rect class="anat-box" x="106" y="162" width="74" height="34" rx="7" />
-        <text class="anat-key" x="143" y="180" style="font-size:12px">table</text>
-        <rect class="anat-box" x="188" y="162" width="86" height="34" rx="7" />
-        <text class="anat-key" x="231" y="180" style="font-size:12px">lookup</text>
+        <text class="anat-tag" x="24" y="166">토큰 (token) — analyzer 가 쪼갠 조각</text>
+        <rect class="anat-box" x="24" y="176" width="78" height="36" rx="7" />
+        <text class="anat-key" x="63" y="195" style="font-size:12px">hash</text>
+        <rect class="anat-box" x="110" y="176" width="78" height="36" rx="7" />
+        <text class="anat-key" x="149" y="195" style="font-size:12px">table</text>
+        <rect class="anat-box" x="196" y="176" width="90" height="36" rx="7" />
+        <text class="anat-key" x="241" y="195" style="font-size:12px">lookup</text>
 
-        <path class="anat-edge" d="M 274 179 C 320 179, 320 120, 366 120" />
-        <polygon class="anat-dot" points="366,120 358,116 358,124" />
-        <text class="anat-sub" x="286" y="212">정규화를 마친 토큰이</text>
-        <text class="anat-sub" x="286" y="228">색인의 term 이 된다</text>
+        <text class="anat-sub" x="24" y="248">정규화를 마친 토큰이</text>
+        <text class="anat-sub" x="24" y="266">색인의 term 이 된다</text>
+
+        <path class="anat-edge" d="M 288 194 C 330 194, 330 128, 370 128" />
+        <polygon class="anat-dot" points="378,128 368,123 368,133" />
 
         <!-- 역색인 표 -->
-        <text class="anat-tag" x="380" y="46">역색인 (inverted index)</text>
-        <line class="anat-div" x1="380" y1="58" x2="900" y2="58" />
-        <text class="anat-tag" x="392" y="76">term</text>
-        <text class="anat-tag" x="530" y="76">df</text>
-        <text class="anat-tag" x="596" y="76">posting list</text>
-        <line class="anat-div" x1="380" y1="86" x2="900" y2="86" />
+        <text class="anat-tag" x="386" y="52">역색인 (inverted index)</text>
+        <line class="anat-div" x1="386" y1="64" x2="976" y2="64" />
+        <text class="anat-tag" x="398" y="84">term</text>
+        <text class="anat-tag" x="566" y="84">df</text>
+        <text class="anat-tag" x="646" y="84">posting list</text>
+        <line class="anat-div" x1="386" y1="94" x2="976" y2="94" />
 
-        <rect class="anat-box anat-box--hi" x="380" y="98" width="520" height="42" rx="8" />
-        <text class="anat-key" x="392" y="120" style="font-size:12px; text-anchor:start">hash</text>
-        <text class="anat-key" x="530" y="120" style="font-size:12px; text-anchor:start; fill:var(--text-secondary)">2</text>
-        <text class="anat-key" x="596" y="120" style="font-size:12px; text-anchor:start; fill:var(--accent)">#0:1  ·  #3:2</text>
+        <rect class="anat-box anat-box--hi" x="386" y="106" width="590" height="44" rx="8" />
+        <text class="anat-key" x="398" y="130" style="font-size:12px; text-anchor:start">hash</text>
+        <text class="anat-key" x="566" y="130" style="font-size:12px; text-anchor:start; fill:var(--text-secondary)">2</text>
+        <text class="anat-key" x="646" y="130" style="font-size:12px; text-anchor:start; fill:var(--accent)">#0:1  ·  #3:2</text>
 
-        <rect class="anat-box" x="380" y="150" width="520" height="42" rx="8" />
-        <text class="anat-key" x="392" y="172" style="font-size:12px; text-anchor:start">table</text>
-        <text class="anat-key" x="530" y="172" style="font-size:12px; text-anchor:start; fill:var(--text-secondary)">2</text>
-        <text class="anat-key" x="596" y="172" style="font-size:12px; text-anchor:start; fill:var(--text-secondary)">#0:1  ·  #3:1</text>
+        <rect class="anat-box" x="386" y="160" width="590" height="44" rx="8" />
+        <text class="anat-key" x="398" y="184" style="font-size:12px; text-anchor:start">table</text>
+        <text class="anat-key" x="566" y="184" style="font-size:12px; text-anchor:start; fill:var(--text-secondary)">2</text>
+        <text class="anat-key" x="646" y="184" style="font-size:12px; text-anchor:start; fill:var(--text-secondary)">#0:1  ·  #3:1</text>
 
-        <rect class="anat-box" x="380" y="202" width="520" height="42" rx="8" />
-        <text class="anat-key" x="392" y="224" style="font-size:12px; text-anchor:start">lookup</text>
-        <text class="anat-key" x="530" y="224" style="font-size:12px; text-anchor:start; fill:var(--text-secondary)">1</text>
-        <text class="anat-key" x="596" y="224" style="font-size:12px; text-anchor:start; fill:var(--text-secondary)">#0:1</text>
+        <rect class="anat-box" x="386" y="214" width="590" height="44" rx="8" />
+        <text class="anat-key" x="398" y="238" style="font-size:12px; text-anchor:start">lookup</text>
+        <text class="anat-key" x="566" y="238" style="font-size:12px; text-anchor:start; fill:var(--text-secondary)">1</text>
+        <text class="anat-key" x="646" y="238" style="font-size:12px; text-anchor:start; fill:var(--text-secondary)">#0:1</text>
 
         <!-- 라벨 -->
-        <path class="anat-lead" d="M 530 98 L 530 74" />
-        <text class="anat-sub" x="470" y="272">df = 이 단어가 나온 문서 수</text>
-        <path class="anat-lead" d="M 640 140 L 640 264" />
-        <circle class="anat-dot" cx="640" cy="140" r="3" />
-        <text class="anat-label" x="700" y="284">#3:2 = 3번 문서에 2번 등장 (tf)</text>
-        <text class="anat-sub" x="700" y="302">문서 번호는 항상 오름차순으로 정렬돼 있다</text>
+        <path class="anat-lead" d="M 570 258 L 570 292" />
+        <circle class="anat-dot" cx="570" cy="258" r="3" />
+        <text class="anat-sub" x="386" y="312">df = 이 단어가 나온 문서 수</text>
+
+        <path class="anat-lead" d="M 706 258 L 760 296" />
+        <circle class="anat-dot" cx="706" cy="258" r="3" />
+        <text class="anat-label" x="976" y="314" text-anchor="end">#3:2 = 3번 문서에 2번 등장 (tf)</text>
+        <text class="anat-sub" x="976" y="334" text-anchor="end">문서 번호는 항상 오름차순으로 정렬돼 있다</text>
       </svg>
       </div>
 
