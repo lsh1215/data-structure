@@ -99,6 +99,8 @@
 .db-card:nth-child(1) { animation-delay: .34s; }
 .db-card:nth-child(2) { animation-delay: .44s; }
 .db-card:nth-child(3) { animation-delay: .54s; }
+.db-card:nth-child(4) { animation-delay: .64s; }
+.db-card:nth-child(5) { animation-delay: .74s; }
 
 @keyframes cardIn { to { opacity: 1; transform: none; } }
 
@@ -225,6 +227,8 @@
 .db-card--rdb   { --c: #00d9c0; --c2: #4fffff; }
 .db-card--redis { --c: #ff5470; --c2: #ff8a5b; }
 .db-card--es    { --c: #a855f7; --c2: #3b82f6; }
+.db-card--prom  { --c: #ff7a45; --c2: #fbbf24; }
+.db-card--ch    { --c: #facc15; --c2: #84cc16; }
 
 .db-card .db-card__icon-wrap {
   background: color-mix(in srgb, var(--c) 10%, transparent);

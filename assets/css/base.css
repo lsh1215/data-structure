@@ -42,6 +42,24 @@
   --es-border-h:   rgba(168, 85, 247, 0.55);
   --es-glow:       rgba(168, 85, 247, 0.18);
 
+  /* Accent — Prometheus (orange → amber) */
+  --prom:          #ff7a45;
+  --prom-b:        #fbbf24;
+  --prom-mid:      #f97316;
+  --prom-dim:      rgba(255, 122, 69, 0.10);
+  --prom-border:   rgba(255, 122, 69, 0.24);
+  --prom-border-h: rgba(255, 122, 69, 0.55);
+  --prom-glow:     rgba(255, 122, 69, 0.18);
+
+  /* Accent — ClickHouse (yellow → lime) */
+  --ch:            #facc15;
+  --ch-b:          #84cc16;
+  --ch-mid:        #eab308;
+  --ch-dim:        rgba(250, 204, 21, 0.10);
+  --ch-border:     rgba(250, 204, 21, 0.24);
+  --ch-border-h:   rgba(250, 204, 21, 0.55);
+  --ch-glow:       rgba(250, 204, 21, 0.18);
+
   /* Semantic */
   --ok:            #34d399;
   --warn:          #fbbf24;

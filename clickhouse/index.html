@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ClickHouse — MergeTree · Sparse Primary Index 시각화</title>
+  <meta name="description" content="ClickHouse MergeTree에서 INSERT batch가 정렬된 data part가 되고, granule과 mark 기반 sparse primary index로 읽을 범위를 줄이는 과정을 애니메이션으로 확인합니다." />
+
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../assets/css/base.css" />
+  <link rel="stylesheet" href="../assets/css/tree.css" />
+  <link rel="stylesheet" href="../assets/css/tsdb.css" />
+  <style>:root { --accent: var(--ch); --accent-2: var(--ch-b); --accent-dim: var(--ch-dim); --accent-border: var(--ch-border); --accent-glow: var(--ch-glow); }</style>
+</head>
+<body>
+
+<canvas class="star-field" id="starField" data-colors="#facc15,#84cc16" aria-hidden="true"></canvas>
+
+<nav class="topbar">
+  <a class="topbar__home" href="../">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+      <line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline>
+    </svg>
+    Home
+  </a>
+  <div class="topbar__title">ClickHouse <span class="sub">MergeTree · part · mark · granule</span></div>
+  <div class="topbar__spacer"></div>
+  <div class="topbar__links">
+    <a class="topbar__link topbar__link--active" href="#terms">용어</a>
+    <a class="topbar__link" href="#viz">INSERT와 쿼리</a>
+    <a class="topbar__link" href="#sparse">희소 인덱스</a>
+    <a class="topbar__link" href="#merge">MergeTree</a>
+    <a class="topbar__link" href="#practice">실무 연결</a>
+  </div>
+</nav>
+
+<main class="page">
+
+  <header class="page-hero">
+    <div class="eyebrow"><span class="eyebrow__dot"></span><span>Columnar OLAP · Sparse Index</span></div>
+    <h1 class="page-title">한 행을 찾지 말고<br /><span class="grad">읽을 granule을 줄인다</span></h1>
+    <p class="page-sub">
+      ClickHouse의 MergeTree는 RDB처럼 row를 하나씩 B+Tree에 끼워 넣지 않습니다.
+      INSERT batch를 <strong>ORDER BY 키로 정렬된 불변 part</strong>로 쓰고,
+      대략 granule마다 하나씩 저장한 <strong>sparse primary index mark</strong>로 “읽을 가능성이 있는 범위”만 고릅니다.
+      Primary key는 유니크 제약이 아니라 <strong>데이터를 저장하는 순서</strong>입니다.
+    </p>
+  </header>
+
+  <!-- ═══════════ 0. 용어 ═══════════ -->
+  <section class="section" id="terms" style="margin-top:var(--sp-10)">
+    <div class="section__head">
+      <div class="section__num">01 / 용어부터</div>
+      <h2 class="section__title">먼저 이 그림의 이름들</h2>
+      <p class="section__desc">
+        아래에서 계속 <strong>part · primary key · granule · mark · merge</strong> 라는 말을 씁니다.
+        ClickHouse는 “정렬된 컬럼 파일 묶음”과 “희소한 이정표”로 큰 범위 쿼리를 빨리 만듭니다.
+      </p>
+    </div>
+
+    <div class="panel">
+      <div class="anatomy-wrap">
+      <svg class="anatomy" viewBox="0 0 1000 390" role="img" aria-label="ClickHouse MergeTree 구성 요소 해부도">
+        <text class="anat-tag" x="24" y="48">INSERT batch</text>
+        <rect class="anat-box" x="24" y="60" width="210" height="58" rx="9" />
+        <text class="anat-key" x="129" y="84" style="font-size:12px">10,000 rows</text>
+        <text class="anat-key" x="129" y="105" style="font-size:11px; fill:var(--text-secondary)">무작위 순서로 도착</text>
+
+        <path class="anat-edge" d="M 234 89 L 280 89" />
+        <polygon class="anat-dot" points="288,89 278,84 278,94" />
+
+        <text class="anat-tag" x="306" y="48">ORDER BY sort</text>
+        <rect class="anat-box anat-box--hi" x="306" y="60" width="244" height="58" rx="9" />
+        <text class="anat-key" x="428" y="84" style="font-size:12px">(service, day, ts)</text>
+        <text class="anat-key" x="428" y="105" style="font-size:11px; fill:var(--text-secondary)">part 내부는 항상 이 순서</text>
+
+        <path class="anat-edge" d="M 550 89 L 596 89" />
+        <polygon class="anat-dot" points="604,89 594,84 594,94" />
+
+        <text class="anat-tag" x="624" y="48">data part</text>
+        <rect class="anat-box" x="624" y="60" width="328" height="176" rx="10" />
+        <line class="anat-div" x1="624" y1="104" x2="952" y2="104" />
+        <line class="anat-div" x1="624" y1="148" x2="952" y2="148" />
+        <line class="anat-div" x1="624" y1="192" x2="952" y2="192" />
+        <text class="anat-key" x="790" y="84" style="font-size:12px">granule #0 · rows 0..8191</text>
+        <text class="anat-key" x="790" y="128" style="font-size:12px">granule #1 · rows 8192..16383</text>
+        <text class="anat-key" x="790" y="172" style="font-size:12px">granule #2 · rows 16384..24575</text>
+        <text class="anat-key" x="790" y="216" style="font-size:12px; fill:var(--text-secondary)">컬럼 파일 + mark 파일</text>
+
+        <path class="anat-lead" d="M 624 84 C 520 170, 426 208, 318 270" />
+        <circle class="anat-dot" cx="624" cy="84" r="3" />
+        <text class="anat-label" x="24" y="268">sparse primary index</text>
+        <text class="anat-sub" x="24" y="288">granule 첫 row 의 primary key 만 저장</text>
+        <text class="anat-sub" x="24" y="306">모든 row 주소를 저장하지 않으므로 메모리에 올라갈 만큼 작다</text>
+
+        <rect class="anat-box anat-box--hi" x="330" y="258" width="250" height="98" rx="9" />
+        <text class="anat-tag" x="350" y="286">mark 0</text>
+        <text class="anat-key" x="484" y="286" style="font-size:12px; fill:var(--accent)">(api, 09-04, 1000)</text>
+        <text class="anat-tag" x="350" y="314">mark 1</text>
+        <text class="anat-key" x="484" y="314" style="font-size:12px; fill:var(--accent)">(api, 09-04, 1815)</text>
+        <text class="anat-tag" x="350" y="342">mark 2</text>
+        <text class="anat-key" x="484" y="342" style="font-size:12px; fill:var(--accent)">(worker, 09-05, 0900)</text>
+
+        <path class="anat-lead" d="M 842 238 L 842 278" />
+        <circle class="anat-dot" cx="842" cy="238" r="3" />
+        <text class="anat-label" x="842" y="302" text-anchor="middle">query</text>
+        <text class="anat-sub" x="842" y="322" text-anchor="middle">WHERE service='api' AND day='2026-09-04'</text>
+        <text class="anat-sub" x="842" y="340" text-anchor="middle">mark로 후보 granule을 찾고, 그 안의 컬럼만 읽는다</text>
+      </svg>
+      </div>
+
+      <div class="terms">
+        <div class="term">
+          <div class="term__k"><b>part</b> data part</div>
+          <div class="term__d">INSERT batch가 디스크에 저장된 불변 파일 묶음. 각 part는 독립적으로 정렬돼 있고 나중에 background merge로 합쳐집니다.</div>
+        </div>
+        <div class="term">
+          <div class="term__k"><b>ORDER BY</b> sorting key</div>
+          <div class="term__d">part 내부 행의 저장 순서. ClickHouse에서 primary key는 보통 이 정렬 키의 prefix입니다.</div>
+        </div>
+        <div class="term">
+          <div class="term__k"><b>granule</b></div>
+          <div class="term__d">인덱스가 가리키는 최소 읽기 단위. 기본 <em>index_granularity 8192행</em> 근처로 생각하면 됩니다.</div>
+        </div>
+        <div class="term">
+          <div class="term__k"><b>mark</b></div>
+          <div class="term__d">granule 첫 행의 primary key와 컬럼 파일 offset. sparse index는 모든 행이 아니라 mark만 들고 있습니다.</div>
+        </div>
+        <div class="term">
+          <div class="term__k"><b>primary index</b></div>
+          <div class="term__d">정렬 키 위의 희소 인덱스. 유니크 보장이 아니라 <em>granule pruning</em>을 위한 이정표입니다.</div>
+        </div>
+        <div class="term">
+          <div class="term__k"><b>merge</b></div>
+          <div class="term__d">작은 part 여러 개를 더 큰 정렬 part로 합치는 백그라운드 작업. part 수와 중복 읽기 비용을 줄입니다.</div>
+        </div>
+      </div>
+
+      <div class="callout callout--accent">
+        <span class="callout__t">기억할 규칙 두 개</span>
+        ① ClickHouse primary key는 “중복 금지”가 아니라 <strong>정렬과 스킵의 기준</strong>이다.
+        ② mark는 모든 행이 아니라 <strong>granule마다 하나</strong>라서 정확한 한 행이 아니라 읽을 범위를 줄인다.
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ 1. 인터랙티브 시각화 ═══════════ -->
+  <section class="section" id="viz">
+    <div class="section__head">
+      <div class="section__num">02 / VISUALIZE</div>
+      <h2 class="section__title">INSERT batch와 granule pruning</h2>
+      <p class="section__desc">
+        part 안의 행은 <span class="mono acc">ORDER BY (service, day, ts)</span> 순서로 정렬됩니다.
+        쿼리를 실행하면 primary index mark로 건너뛸 granule이 흐려지고, 읽을 granule만 강조됩니다.
+      </p>
+    </div>
+
+    <div class="viz">
+      <div class="pipe" id="chPipe"></div>
+
+      <div class="viz__bar">
+        <button class="btn btn--sm btn--primary" id="chDemo" type="button">▶ 전체 시나리오</button>
+        <button class="btn btn--sm" id="chInsert" type="button">INSERT 1 batch</button>
+        <button class="btn btn--sm" id="chInsert2" type="button">INSERT 2 batches</button>
+        <div class="viz__sep" aria-hidden="true"></div>
+        <button class="btn btn--sm" id="chQueryApi" type="button">api 09-04 쿼리</button>
+        <button class="btn btn--sm" id="chQueryDateOnly" type="button">날짜만 쿼리</button>
+        <button class="btn btn--sm" id="chMerge" type="button">background merge</button>
+        <button class="btn btn--sm btn--danger" id="chReset" type="button">초기화</button>
+      </div>
+
+      <div class="viz__bar">
+        <button class="btn btn--sm" id="chPrev" type="button">◀ 이전</button>
+        <button class="btn btn--sm btn--primary" id="chPlay" type="button">▶ 재생</button>
+        <button class="btn btn--sm" id="chNext" type="button">다음 ▶</button>
+        <span class="mono muted" id="chStep" style="font-size:11px">step 0 / 0</span>
+        <span class="narr__bar" style="max-width:180px"><span class="narr__bar-fill" id="chBar"></span></span>
+        <div class="topbar__spacer"></div>
+        <label class="field">속도
+          <input type="range" id="chSpeed" min="0.4" max="4" step="0.2" value="1.4" aria-label="속도" />
+          <span class="mono acc" id="chSpeedVal">1.4×</span>
+        </label>
+      </div>
+
+      <div class="ch-stage">
+        <div class="part-list" id="chParts"></div>
+      </div>
+
+      <div class="viz__foot">
+        <div class="viz__narration">
+          <div class="panel__label">현재 단계</div>
+          <div class="narr"><span class="narr__kind" id="chKind">idle</span><span id="chMsg">INSERT batch 를 추가해 보세요</span></div>
+          <div class="hashbox mt3" id="chDetail" style="min-height:92px">—</div>
+        </div>
+        <div class="viz__counters">
+          <div class="panel__label">MergeTree 상태</div>
+          <div class="mini-stats">
+            <div><div class="mini-stat__k">parts</div><div class="mini-stat__v acc" id="chPartsN">0</div></div>
+            <div><div class="mini-stat__k">rows</div><div class="mini-stat__v" id="chRowsN">0</div></div>
+            <div><div class="mini-stat__k">marks</div><div class="mini-stat__v" id="chMarksN">0</div></div>
+            <div><div class="mini-stat__k">read rows</div><div class="mini-stat__v" id="chReadN">—</div></div>
+            <div><div class="mini-stat__k">matched</div><div class="mini-stat__v" id="chMatchedN">—</div></div>
+            <div><div class="mini-stat__k">skipped granules</div><div class="mini-stat__v" id="chSkippedN">—</div></div>
+          </div>
+          <div class="query-card mt4" id="chQueryBox"><strong>최근 쿼리</strong><br>아직 실행하지 않았습니다</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ 2. 희소 인덱스 ═══════════ -->
+  <section class="section" id="sparse">
+    <div class="section__head">
+      <div class="section__num">03 / SPARSE INDEX</div>
+      <h2 class="section__title">왜 모든 row를 인덱싱하지 않는가</h2>
+      <p class="section__desc">
+        분석 쿼리는 보통 한 행이 아니라 수백만 행을 읽습니다. 그래서 ClickHouse는 row마다 포인터를 두는 대신
+        granule마다 mark 하나를 두고, 읽을 범위를 대략 줄인 뒤 컬럼 파일을 순차적으로 읽습니다.
+      </p>
+    </div>
+
+    <div class="grid grid--2">
+      <div class="panel">
+        <h4 class="prose" style="margin-top:0">RDB B+Tree 와 다른 비용 모델</h4>
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead><tr><th style="width:120px"></th><th>B+Tree</th><th>ClickHouse MergeTree</th></tr></thead>
+            <tbody>
+              <tr><td class="mono">목표</td><td>몇 행을 정확히 찾기</td><td>큰 범위에서 읽을 블록 줄이기</td></tr>
+              <tr><td class="mono">인덱스 밀도</td><td>거의 행마다 엔트리</td><td>granule마다 mark 하나</td></tr>
+              <tr><td class="mono">쓰기</td><td>트리에 제자리 삽입</td><td>정렬된 새 part append</td></tr>
+              <tr><td class="mono">갱신</td><td>row update/delete</td><td>mutation으로 새 part 작성</td></tr>
+              <tr><td class="mono">읽기</td><td>랜덤 접근 + row fetch</td><td>컬럼 파일 순차 읽기 + vectorized scan</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h4 class="prose" style="margin-top:0">index_granularity 감각</h4>
+        <div class="math">기본 granule ≈ 8192 rows
+
+1억 rows / 8192 ≈ 12,208 marks
+
+<span class="cm">// 모든 row 포인터 대신 mark 1만여 개면 primary index 전체를 메모리에 두기 쉽다</span>
+WHERE service='api'
+  → 정렬 키 prefix 로 mark 범위 선택
+  → 선택된 granule 의 필요한 컬럼만 읽음</div>
+        <div class="prose">
+          <p>granule 안에서는 결국 읽고 필터링합니다. 그래서 정렬 키가 쿼리 패턴과 맞으면 극적으로 줄고, 맞지 않으면 넓게 읽습니다.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ 3. MergeTree ═══════════ -->
+  <section class="section" id="merge">
+    <div class="section__head">
+      <div class="section__num">04 / MERGETREE</div>
+      <h2 class="section__title">part가 많아지면 배경에서 합친다</h2>
+      <p class="section__desc">
+        INSERT는 빠르게 새 part를 만들지만, part가 너무 많으면 쿼리는 part마다 index를 열어야 합니다.
+        MergeTree라는 이름 그대로, 같은 partition의 작은 part들을 백그라운드에서 더 큰 정렬 part로 합칩니다.
+      </p>
+    </div>
+
+    <div class="grid grid--2">
+      <div class="panel">
+        <h4 class="prose" style="margin-top:0">쓰기 경로</h4>
+        <div class="prose">
+          <ul>
+            <li>INSERT batch 수신</li>
+            <li>partition key 별로 나눔</li>
+            <li>각 partition 안에서 ORDER BY 키로 정렬</li>
+            <li>컬럼 파일, marks, primary index, checksums를 새 part로 작성</li>
+            <li>메타데이터를 교체해 part를 보이게 함</li>
+          </ul>
+          <p>작은 INSERT를 너무 자주 보내면 작은 part가 많아져 merge 부하가 커집니다. ClickHouse가 batch insert를 좋아하는 이유입니다.</p>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h4 class="prose" style="margin-top:0">삭제와 업데이트는 “새 part 쓰기”</h4>
+        <div class="prose">
+          <p>MergeTree part는 불변에 가깝게 다뤄집니다. DELETE/UPDATE mutation은 조건에 맞는 part를 다시 쓰는 작업에 가깝고, 그래서 OLTP처럼 자주 수정하는 워크로드와 맞지 않습니다.</p>
+          <ul>
+            <li>대량 append와 분석 읽기에는 강함</li>
+            <li>단건 update/delete에는 비쌈</li>
+            <li>실시간 정정이 많으면 ReplacingMergeTree 같은 엔진 설계가 필요</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel panel--flush mt6">
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr><th style="width:190px">구조</th><th style="width:180px">담당</th><th>왜 중요한가</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">partition</td><td>큰 삭제/보관 단위</td><td>월별 partition이면 오래된 월 삭제가 metadata 작업에 가까워짐</td></tr>
+            <tr><td class="mono">part</td><td>불변 파일 묶음</td><td>쓰기와 읽기를 분리하고 background merge로 정리</td></tr>
+            <tr><td class="mono">primary.idx</td><td>sparse PK marks</td><td>쿼리 시작 전에 읽을 granule 후보를 줄임</td></tr>
+            <tr><td class="mono">.mrk / .mrk2</td><td>컬럼 offset</td><td>선택된 granule의 컬럼 파일 위치로 바로 이동</td></tr>
+            <tr><td class="mono">column files</td><td>컬럼별 데이터</td><td>필요한 컬럼만 읽고 압축률을 높임</td></tr>
+            <tr><td class="mono">skipping index</td><td>보조 pruning</td><td>minmax, bloom filter 등으로 primary key 밖 조건의 읽기량을 더 줄임</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ 4. 실무 ═══════════ -->
+  <section class="section" id="practice">
+    <div class="section__head">
+      <div class="section__num">05 / IN PRACTICE</div>
+      <h2 class="section__title">ORDER BY를 고를 때 보는 것</h2>
+    </div>
+
+    <div class="grid grid--2">
+      <div class="panel">
+        <h4 class="prose" style="margin-top:0">자주 거르는 조건을 앞에 둔다</h4>
+        <div class="prose">
+          <p><code>ORDER BY (service, day, ts)</code>라면 <code>service='api'</code>와 <code>day</code> 범위가 있을 때 granule pruning이 잘 됩니다.</p>
+          <ul>
+            <li>좋음: <code>WHERE service='api' AND day=today()</code></li>
+            <li>약함: <code>WHERE status=500</code>만 있는 쿼리</li>
+            <li>해결: status가 핵심이면 정렬 키나 skipping index를 재검토</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h4 class="prose" style="margin-top:0">카디널리티가 낮은 것부터 무조건은 아니다</h4>
+        <div class="prose">
+          <p>낮은 cardinality 컬럼을 앞에 두면 압축과 pruning에 유리할 수 있지만, 너무 낮으면 큰 덩어리로만 나뉩니다. 실제 쿼리의 WHERE, GROUP BY, ORDER BY 패턴이 우선입니다.</p>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h4 class="prose" style="margin-top:0">SELECT 컬럼 수가 곧 I/O다</h4>
+        <div class="prose">
+          <p>컬럼 저장소이므로 <code>SELECT *</code>는 진짜로 모든 컬럼 파일을 읽는 쪽에 가깝습니다. 대시보드와 배치 쿼리에서는 필요한 컬럼만 명시하는 습관이 성능에 바로 이어집니다.</p>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h4 class="prose" style="margin-top:0">Prometheus와 같이 쓸 때</h4>
+        <div class="prose">
+          <p>Prometheus는 서비스 상태를 빠르게 보는 데 좋고, ClickHouse는 오래된 고해상도 이벤트/메트릭을 넓게 분석하는 데 좋습니다. 지표는 Prometheus, 원천 이벤트와 장기 분석은 ClickHouse로 나누면 각자의 자료구조가 잘 살아납니다.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout callout--accent mt6">
+      <span class="callout__t">한 줄 요약</span>
+      ClickHouse 튜닝의 첫 질문은 “인덱스를 탔나?”가 아니라
+      <strong>“ORDER BY 덕분에 몇 개 granule을 건너뛰었나?”</strong>입니다.
+      읽은 rows와 marks를 줄이고, 필요한 컬럼만 읽게 만들면 분석 쿼리가 빨라집니다.
+    </div>
+
+    <div class="panel mt6">
+      <div class="panel__label">공식 자료</div>
+      <div class="prose" style="font-size:13.5px">
+        <p>
+          MergeTree, sparse primary index, granule 설명은 ClickHouse 공식 문서의
+          <a class="acc" href="https://clickhouse.com/docs/engines/table-engines/mergetree-family/mergetree" target="_blank" rel="noopener noreferrer">MergeTree</a>와
+          <a class="acc" href="https://clickhouse.com/docs/guides/best-practices/sparse-primary-indexes" target="_blank" rel="noopener noreferrer">Sparse primary indexes</a>를 기준으로 정리했습니다.
+        </p>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-footer">
+  <div class="flex center gap3 wrap" style="justify-content:center">
+    <a href="../">← 다른 DB 보기</a>
+    <span class="muted">·</span>
+    <a href="../rdb/">RDB</a>
+    <span class="muted">·</span>
+    <a href="../redis/">Redis</a>
+    <span class="muted">·</span>
+    <a href="../elasticsearch/">Elasticsearch</a>
+    <span class="muted">·</span>
+    <a href="../prometheus/">Prometheus</a>
+  </div>
+  <p class="muted">DB Internals Visualized · vanilla JS</p>
+</footer>
+
+<script src="../assets/js/starfield.js"></script>
+<script src="../assets/js/clickhouse-merge-tree.js"></script>
+<script src="../assets/js/clickhouse-viz.js"></script>
+</body>
+</html>

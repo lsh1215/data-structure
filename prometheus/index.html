@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Prometheus — TSDB · WAL · Chunk · Block 시각화</title>
+  <meta name="description" content="Prometheus TSDB에서 metric과 labels가 series가 되고, 샘플이 WAL과 head chunk를 거쳐 block으로 저장되고 compact되는 과정을 애니메이션으로 확인합니다." />
+
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔥</text></svg>" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../assets/css/base.css" />
+  <link rel="stylesheet" href="../assets/css/tree.css" />
+  <link rel="stylesheet" href="../assets/css/tsdb.css" />
+  <style>:root { --accent: var(--prom); --accent-2: var(--prom-b); --accent-dim: var(--prom-dim); --accent-border: var(--prom-border); --accent-glow: var(--prom-glow); }</style>
+</head>
+<body>
+
+<canvas class="star-field" id="starField" data-colors="#ff7a45,#fbbf24" aria-hidden="true"></canvas>
+
+<nav class="topbar">
+  <a class="topbar__home" href="../">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+      <line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline>
+    </svg>
+    Home
+  </a>
+  <div class="topbar__title">Prometheus <span class="sub">TSDB · WAL · chunk · block</span></div>
+  <div class="topbar__spacer"></div>
+  <div class="topbar__links">
+    <a class="topbar__link topbar__link--active" href="#terms">용어</a>
+    <a class="topbar__link" href="#viz">샘플 저장</a>
+    <a class="topbar__link" href="#index">라벨 인덱스</a>
+    <a class="topbar__link" href="#blocks">Block</a>
+    <a class="topbar__link" href="#practice">실무 연결</a>
+  </div>
+</nav>
+
+<main class="page">
+
+  <header class="page-hero">
+    <div class="eyebrow"><span class="eyebrow__dot"></span><span>Time Series Database · Append Optimized</span></div>
+    <h1 class="page-title">라벨 셋 하나가<br /><span class="grad">시간축 하나가 된다</span></h1>
+    <p class="page-sub">
+      Prometheus에서 중요한 단위는 “테이블의 행”이 아니라 <strong>series</strong>입니다.
+      <span class="mono acc">http_requests_total{job="api",instance="10.0.0.1"}</span> 같은 라벨 셋 하나가 시간축 하나가 되고,
+      샘플은 WAL에 기록된 뒤 head chunk에 append됩니다. 시간이 지나면 이 head가 불변 block으로 굳고, block끼리 다시 compact됩니다.
+    </p>
+  </header>
+
+  <!-- ═══════════ 0. 용어 ═══════════ -->
+  <section class="section" id="terms" style="margin-top:var(--sp-10)">
+    <div class="section__head">
+      <div class="section__num">01 / 용어부터</div>
+      <h2 class="section__title">먼저 이 그림의 이름들</h2>
+      <p class="section__desc">
+        아래에서 계속 <strong>series · label postings · WAL · head chunk · block</strong> 이라는 말을 씁니다.
+        Prometheus를 “시간별 로그 저장소”가 아니라 “라벨 인덱스가 붙은 append-only column chunk 저장소”로 보면 길이 훨씬 빨리 보입니다.
+      </p>
+    </div>
+
+    <div class="panel">
+      <div class="anatomy-wrap">
+      <svg class="anatomy" viewBox="0 0 1000 390" role="img" aria-label="Prometheus TSDB 구성 요소 해부도">
+        <text class="anat-tag" x="24" y="48">샘플 (sample)</text>
+        <rect class="anat-box anat-box--hi" x="24" y="60" width="320" height="58" rx="9" />
+        <text class="anat-key" x="184" y="84" style="font-size:12px">http_requests_total{job="api", instance="a"}</text>
+        <text class="anat-key" x="184" y="105" style="font-size:12px; fill:var(--text-secondary)">t=120, value=42</text>
+
+        <path class="anat-edge" d="M 344 89 L 384 89" />
+        <polygon class="anat-dot" points="392,89 382,84 382,94" />
+
+        <text class="anat-tag" x="404" y="48">series lookup</text>
+        <rect class="anat-box" x="404" y="60" width="172" height="58" rx="9" />
+        <text class="anat-key" x="490" y="84" style="font-size:12px">series #17</text>
+        <text class="anat-key" x="490" y="105" style="font-size:11px; fill:var(--text-secondary)">metric + labels = identity</text>
+
+        <path class="anat-edge" d="M 490 118 L 490 156" />
+        <polygon class="anat-dot" points="490,164 485,154 495,154" />
+
+        <text class="anat-tag" x="376" y="182">WAL</text>
+        <rect class="anat-box" x="376" y="192" width="228" height="42" rx="8" />
+        <text class="anat-key" x="490" y="214" style="font-size:12px">append series/sample record</text>
+
+        <path class="anat-edge" d="M 576 89 L 616 89" />
+        <polygon class="anat-dot" points="624,89 614,84 614,94" />
+
+        <text class="anat-tag" x="636" y="48">head chunk</text>
+        <rect class="anat-box anat-box--hi" x="636" y="60" width="310" height="58" rx="9" />
+        <text class="anat-key" x="791" y="84" style="font-size:12px">[(90,39), (105,41), (120,42)]</text>
+        <text class="anat-key" x="791" y="105" style="font-size:11px; fill:var(--text-secondary)">timestamp delta-of-delta + value XOR</text>
+
+        <path class="anat-edge" d="M 791 118 L 791 164" />
+        <polygon class="anat-dot" points="791,172 786,162 796,162" />
+
+        <text class="anat-tag" x="636" y="192">2h block</text>
+        <rect class="anat-box" x="636" y="202" width="310" height="70" rx="9" />
+        <text class="anat-key" x="791" y="222" style="font-size:12px">chunks/ · index · tombstones · meta.json</text>
+        <text class="anat-key" x="791" y="245" style="font-size:11px; fill:var(--text-secondary)">불변 파일 묶음, 나중에 compaction 으로 병합</text>
+
+        <path class="anat-lead" d="M 244 126 C 244 210, 244 258, 374 292" />
+        <circle class="anat-dot" cx="374" cy="292" r="3" />
+        <text class="anat-label" x="24" y="290">label postings</text>
+        <text class="anat-sub" x="24" y="310">job="api" → #17, #18</text>
+        <text class="anat-sub" x="24" y="328">instance="a" → #17</text>
+        <text class="anat-sub" x="24" y="346">쿼리는 이 목록의 교집합으로 series 를 찾는다</text>
+
+        <line class="anat-div" x1="404" y1="286" x2="604" y2="286" />
+        <text class="anat-tag" x="414" y="310">job="api"</text>
+        <text class="anat-key" x="548" y="310" style="font-size:12px; fill:var(--accent)">#17 · #18</text>
+        <text class="anat-tag" x="414" y="336">__name__="http_requests_total"</text>
+        <text class="anat-key" x="548" y="336" style="font-size:12px; fill:var(--accent)">#17</text>
+      </svg>
+      </div>
+
+      <div class="terms">
+        <div class="term">
+          <div class="term__k"><b>series</b> 시간축</div>
+          <div class="term__d"><em>metric name + labels 전체</em>가 같은 샘플들의 줄. label 값 하나만 달라도 완전히 다른 series 입니다.</div>
+        </div>
+        <div class="term">
+          <div class="term__k"><b>sample</b> 샘플</div>
+          <div class="term__d"><em>timestamp + value</em> 한 쌍. Prometheus의 쓰기는 대부분 “기존 series 뒤에 sample append”입니다.</div>
+        </div>
+        <div class="term">
+          <div class="term__k"><b>label postings</b></div>
+          <div class="term__d"><code>job="api"</code> 같은 <em>label pair 에서 series id 목록</em>으로 가는 인덱스. selector 검색의 출발점입니다.</div>
+        </div>
+        <div class="term">
+          <div class="term__k"><b>WAL</b></div>
+          <div class="term__d">head에 쓰기 전에 append하는 복구 로그. 장애가 나면 WAL을 replay해서 최근 head를 다시 만듭니다.</div>
+        </div>
+        <div class="term">
+          <div class="term__k"><b>chunk</b></div>
+          <div class="term__d">한 series의 연속 샘플 묶음. timestamp는 delta-of-delta, value는 XOR 계열로 압축됩니다.</div>
+        </div>
+        <div class="term">
+          <div class="term__k"><b>block</b></div>
+          <div class="term__d">일정 시간 범위의 chunk와 index를 담은 불변 디렉터리. 처음에는 보통 2시간 block으로 생기고, 이후 compaction으로 커집니다.</div>
+        </div>
+      </div>
+
+      <div class="callout callout--accent">
+        <span class="callout__t">기억할 규칙 두 개</span>
+        ① 새 label set 은 새 series 를 만든다. ② 새 sample 은 기존 series 의 chunk 뒤에 append 된다.
+        Prometheus의 성능 문제는 대부분 “샘플이 많다”보다 <strong>새 series 가 너무 많이 생긴다</strong>에서 터집니다.
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ 1. 인터랙티브 시각화 ═══════════ -->
+  <section class="section" id="viz">
+    <div class="section__head">
+      <div class="section__num">02 / VISUALIZE</div>
+      <h2 class="section__title">샘플 하나가 저장되는 경로</h2>
+      <p class="section__desc">
+        위쪽 파이프라인은 scrape 샘플이 지나는 단계이고, 아래는 실제 모델 상태입니다.
+        샘플을 계속 넣어보면 head chunk가 차고, block으로 잘리고, block들이 다시 compaction되는 흐름이 보입니다.
+      </p>
+    </div>
+
+    <div class="viz">
+      <div class="pipe" id="promPipe"></div>
+
+      <div class="viz__bar">
+        <button class="btn btn--sm btn--primary" id="promDemo" type="button">▶ 전체 시나리오</button>
+        <button class="btn btn--sm" id="promAddCpu" type="button">CPU 샘플</button>
+        <button class="btn btn--sm" id="promAddHttp" type="button">HTTP 샘플</button>
+        <button class="btn btn--sm" id="promBurst" type="button">샘플 7개</button>
+        <div class="viz__sep" aria-hidden="true"></div>
+        <button class="btn btn--sm" id="promQuery" type="button">job="api" 쿼리</button>
+        <button class="btn btn--sm" id="promCut" type="button">2h block 쓰기</button>
+        <button class="btn btn--sm" id="promCompact" type="button">compaction</button>
+        <button class="btn btn--sm btn--danger" id="promReset" type="button">초기화</button>
+      </div>
+
+      <div class="viz__bar">
+        <button class="btn btn--sm" id="promPrev" type="button">◀ 이전</button>
+        <button class="btn btn--sm btn--primary" id="promPlay" type="button">▶ 재생</button>
+        <button class="btn btn--sm" id="promNext" type="button">다음 ▶</button>
+        <span class="mono muted" id="promStep" style="font-size:11px">step 0 / 0</span>
+        <span class="narr__bar" style="max-width:180px"><span class="narr__bar-fill" id="promBar"></span></span>
+        <div class="topbar__spacer"></div>
+        <label class="field">속도
+          <input type="range" id="promSpeed" min="0.4" max="4" step="0.2" value="1.5" aria-label="속도" />
+          <span class="mono acc" id="promSpeedVal">1.5×</span>
+        </label>
+      </div>
+
+      <div class="flow-grid">
+        <div class="flow-col">
+          <div class="panel__label">series / head chunks</div>
+          <div id="promSeries"></div>
+        </div>
+        <div class="flow-col">
+          <div class="panel__label">label postings</div>
+          <div id="promPostings"></div>
+        </div>
+        <div class="flow-col">
+          <div class="panel__label">WAL tail</div>
+          <div class="wal-list" id="promWal"></div>
+        </div>
+        <div class="flow-col">
+          <div class="panel__label">persistent blocks</div>
+          <div class="block-grid" id="promBlocks"></div>
+        </div>
+      </div>
+
+      <div class="viz__foot">
+        <div class="viz__narration">
+          <div class="panel__label">현재 단계</div>
+          <div class="narr"><span class="narr__kind" id="promKind">idle</span><span id="promMsg">샘플을 추가해 보세요</span></div>
+          <div class="hashbox mt3" id="promDetail" style="min-height:92px">—</div>
+        </div>
+        <div class="viz__counters">
+          <div class="panel__label">TSDB 상태</div>
+          <div class="mini-stats">
+            <div><div class="mini-stat__k">series</div><div class="mini-stat__v acc" id="promSeriesN">0</div></div>
+            <div><div class="mini-stat__k">samples</div><div class="mini-stat__v" id="promSamplesN">0</div></div>
+            <div><div class="mini-stat__k">head chunks</div><div class="mini-stat__v" id="promHeadChunksN">0</div></div>
+            <div><div class="mini-stat__k">blocks</div><div class="mini-stat__v" id="promBlocksN">0</div></div>
+          </div>
+          <div class="prose mt4" style="font-size:13px">
+            <ul>
+              <li>샘플 append 는 싸다</li>
+              <li>새 label set 은 postings와 series metadata를 늘린다</li>
+              <li>쿼리는 label postings 교집합 뒤에 시간 범위 chunk만 읽는다</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ 2. 라벨 인덱스 ═══════════ -->
+  <section class="section" id="index">
+    <div class="section__head">
+      <div class="section__num">03 / LABEL INDEX</div>
+      <h2 class="section__title">카디널리티는 label set 개수다</h2>
+      <p class="section__desc">
+        Prometheus에서 샘플 수는 압축 chunk로 잘 버티지만, series 수는 메모리와 인덱스를 직접 키웁니다.
+        특히 <code>user_id</code>, <code>request_id</code>, <code>trace_id</code>처럼 값 종류가 계속 늘어나는 라벨은 새 series를 끝없이 만듭니다.
+      </p>
+    </div>
+
+    <div class="grid grid--2">
+      <div class="panel">
+        <h4 class="prose" style="margin-top:0">selector 는 postings 교집합이다</h4>
+        <div class="math">{job="api", __name__="http_requests_total"}
+
+job="api" postings                  = [#17, #18, #42]
+__name__="http_requests_total"      = [#17, #42, #99]
+교집합                               = [#17, #42]
+
+<span class="cm">// 그 다음에 시간 범위와 겹치는 chunk 만 읽는다</span></div>
+        <div class="prose">
+          <p>RDB의 복합 인덱스처럼 “하나의 정렬 키”를 타는 게 아니라, label pair마다 만들어진 series id 목록을 합칩니다. 그래서 라벨 이름과 값의 분포가 쿼리 비용을 바꿉니다.</p>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h4 class="prose" style="margin-top:0">나쁜 라벨 하나가 만드는 폭발</h4>
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead><tr><th style="width:170px">라벨</th><th style="width:130px">값 개수</th><th>결과</th></tr></thead>
+            <tbody>
+              <tr><td class="mono">job</td><td class="mono acc">10</td><td>서비스 단위. 안정적이라 좋다</td></tr>
+              <tr><td class="mono">instance</td><td class="mono acc">500</td><td>타깃 단위. 보통 필요하다</td></tr>
+              <tr><td class="mono">method</td><td class="mono acc">6</td><td>낮은 cardinality</td></tr>
+              <tr><td class="mono">user_id</td><td class="mono" style="color:var(--hot)">1,000,000</td><td>각 사용자마다 별도 series. 운영 사고 후보</td></tr>
+              <tr><td class="mono">path="/orders/123"</td><td class="mono" style="color:var(--hot)">무한 증가</td><td>템플릿 라벨 <code>/orders/:id</code> 로 낮춰야 한다</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ 3. Block 구조 ═══════════ -->
+  <section class="section" id="blocks">
+    <div class="section__head">
+      <div class="section__num">04 / BLOCKS</div>
+      <h2 class="section__title">최근은 head, 과거는 block</h2>
+      <p class="section__desc">
+        Prometheus는 최근 데이터를 head에 append하다가 일정 범위가 차면 불변 block으로 저장합니다.
+        block은 한 번 만들어지면 수정하지 않고, 삭제는 tombstone으로 표시했다가 compaction 때 정리합니다.
+      </p>
+    </div>
+
+    <div class="panel panel--flush">
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr><th style="width:170px">파일/영역</th><th style="width:170px">담당</th><th>자료구조 관점</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">head</td><td>최근 쓰기</td><td>메모리의 series map + active chunk. append에 최적화</td></tr>
+            <tr><td class="mono">wal/</td><td>복구</td><td>series와 sample record를 순서대로 append. restart 때 replay</td></tr>
+            <tr><td class="mono">chunks/</td><td>샘플 저장</td><td>series별 연속 샘플 묶음. XOR 계열 압축으로 timestamp/value를 작게 저장</td></tr>
+            <tr><td class="mono">index</td><td>label 검색</td><td>symbol table, label index, postings, series metadata가 들어 있는 block-local 인덱스</td></tr>
+            <tr><td class="mono">tombstones</td><td>삭제 표시</td><td>block은 불변이라 지운 범위만 표시. compaction 때 실제 제거</td></tr>
+            <tr><td class="mono">meta.json</td><td>block 메타</td><td>ULID, minTime/maxTime, compaction level, sources 기록</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="grid grid--2 mt6">
+      <div class="panel">
+        <h4 class="prose" style="margin-top:0">왜 chunk 압축이 잘 되는가</h4>
+        <div class="prose">
+          <ul>
+            <li>scrape 간격은 보통 일정하다 → timestamp delta-of-delta가 0에 가까움</li>
+            <li>카운터와 게이지는 직전 값과 비슷하게 움직인다 → value XOR가 작음</li>
+            <li>series별로 따로 묶어야 같은 패턴이 이어진다</li>
+          </ul>
+          <p>그래서 Prometheus는 행 단위 이벤트 로그보다 “동일 라벨 셋의 규칙적인 숫자 흐름”에 훨씬 강합니다.</p>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h4 class="prose" style="margin-top:0">Compaction 이 하는 일</h4>
+        <div class="prose">
+          <ul>
+            <li>작은 block을 더 긴 시간 범위 block으로 병합</li>
+            <li>삭제 표시된 샘플 범위를 실제로 제거</li>
+            <li>쿼리가 열어야 할 block 수를 줄임</li>
+            <li>대신 백그라운드 디스크 I/O를 쓴다</li>
+          </ul>
+          <p>RDB의 page split과 달리 과거 block은 제자리 수정하지 않습니다. 새 block을 만들고, 성공하면 이전 block을 버립니다.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ 4. 실무 ═══════════ -->
+  <section class="section" id="practice">
+    <div class="section__head">
+      <div class="section__num">05 / IN PRACTICE</div>
+      <h2 class="section__title">이 구조가 운영에서 드러나는 순간</h2>
+    </div>
+
+    <div class="grid grid--2">
+      <div class="panel">
+        <h4 class="prose" style="margin-top:0">Prometheus는 이벤트 저장소가 아니다</h4>
+        <div class="prose">
+          <p>“요청 1건 = sample 1개”처럼 쓰면 series와 sample 패턴이 모두 망가집니다. 이벤트는 로그/트레이싱/OLAP으로 보내고, Prometheus에는 집계된 숫자를 넣는 편이 맞습니다.</p>
+          <ul>
+            <li>좋음: <code>http_requests_total{job, method, code}</code></li>
+            <li>위험: <code>http_request{request_id, user_id, raw_path}</code></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h4 class="prose" style="margin-top:0">recording rule 은 materialized series</h4>
+        <div class="prose">
+          <p>매번 비싼 PromQL을 계산하는 대신, 결과를 새 series로 미리 저장합니다. ClickHouse의 materialized view와 비슷한 감각입니다.</p>
+          <ul>
+            <li>대시보드 반복 쿼리 비용 감소</li>
+            <li>알림 규칙의 지연과 부하 완화</li>
+            <li>대신 저장할 series가 늘어난다는 비용이 생김</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h4 class="prose" style="margin-top:0">remote write 가 필요한 지점</h4>
+        <div class="prose">
+          <p>Prometheus 로컬 TSDB는 빠른 최근 관측에 강합니다. 장기 보관, 전역 쿼리, 다중 클러스터 집계가 필요하면 Thanos, Mimir, Cortex 같은 장기 저장 계층으로 remote write를 붙입니다.</p>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h4 class="prose" style="margin-top:0">소스에서 확인할 키워드</h4>
+        <div class="prose">
+          <ul>
+            <li><code>tsdb.Head</code> — 최근 series와 chunks</li>
+            <li><code>index.Postings</code> — label pair에서 series ref 목록</li>
+            <li><code>chunks.Meta</code> — chunk 시간 범위와 참조</li>
+            <li><code>LeveledCompactor</code> — block compaction 정책</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout callout--accent mt6">
+      <span class="callout__t">ClickHouse 페이지와 이어서 보기</span>
+      Prometheus는 <strong>라벨로 series를 찾고 시간 범위 chunk를 읽는</strong> 구조입니다.
+      ClickHouse는 <strong>정렬 키로 granule을 줄이고 필요한 컬럼만 읽는</strong> 구조입니다.
+      둘 다 시계열을 다루지만, Prometheus는 관측 지표의 최근 조회에, ClickHouse는 큰 범위의 분석 질의에 더 잘 맞습니다.
+    </div>
+
+    <div class="panel mt6">
+      <div class="panel__label">공식 자료</div>
+      <div class="prose" style="font-size:13.5px">
+        <p>
+          저장 구조의 큰 흐름은 Prometheus 공식 문서의
+          <a class="acc" href="https://prometheus.io/docs/prometheus/latest/storage/" target="_blank" rel="noopener noreferrer">Storage</a>와
+          <a class="acc" href="https://github.com/prometheus/prometheus/tree/main/tsdb/docs/format" target="_blank" rel="noopener noreferrer">TSDB format 문서</a>를 기준으로 정리했습니다.
+        </p>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-footer">
+  <div class="flex center gap3 wrap" style="justify-content:center">
+    <a href="../">← 다른 DB 보기</a>
+    <span class="muted">·</span>
+    <a href="../rdb/">RDB</a>
+    <span class="muted">·</span>
+    <a href="../redis/">Redis</a>
+    <span class="muted">·</span>
+    <a href="../elasticsearch/">Elasticsearch</a>
+    <span class="muted">·</span>
+    <a href="../clickhouse/">ClickHouse</a>
+  </div>
+  <p class="muted">DB Internals Visualized · vanilla JS</p>
+</footer>
+
+<script src="../assets/js/starfield.js"></script>
+<script src="../assets/js/prometheus-tsdb.js"></script>
+<script src="../assets/js/prometheus-viz.js"></script>
+</body>
+</html>
