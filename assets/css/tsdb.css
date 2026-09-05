@@ -31,6 +31,11 @@
   color: var(--accent);
 }
 
+.math {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .metric-card,
 .part-card,
 .block-card {
@@ -76,7 +81,8 @@
   font-size: 11px;
   color: var(--text-secondary);
   line-height: 1.65;
-  word-break: break-all;
+  overflow-wrap: anywhere;
+  word-break: normal;
 }
 
 /* Prometheus */
@@ -121,6 +127,7 @@
 .chunk-card--active { border-color: var(--accent); background: var(--accent-dim); }
 .chunk-card__h {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: var(--sp-2);
   font-family: var(--font-mono);
@@ -147,9 +154,8 @@
   background: var(--accent-dim);
 }
 .posting-row__k {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
   color: var(--text-primary);
 }
 .posting-row__ids {
@@ -184,6 +190,10 @@
   color: var(--text-secondary);
 }
 .wal-record b { color: var(--accent); font-weight: 500; }
+.wal-record span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 .block-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
@@ -245,6 +255,7 @@
   background: rgba(255,255,255,.035);
   border-radius: 100px;
   padding: 2px 7px;
+  overflow-wrap: anywhere;
 }
 .mark-pill--active { color: var(--accent); border-color: var(--accent-border); background: var(--accent-dim); }
 .granule-grid {
@@ -285,20 +296,24 @@
 .granule__h b { color: var(--accent); font-weight: 500; }
 .row-mini {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 6px;
+  align-items: start;
   padding: 3px 0;
   font-family: var(--font-mono);
   font-size: 10.5px;
+  line-height: 1.35;
   color: var(--text-secondary);
   border-top: 1px solid rgba(255,255,255,.045);
 }
 .row-mini:first-of-type { border-top: none; }
 .row-mini--match { color: var(--ok); }
 .row-mini span:first-child {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
 }
 .marks-list {
   display: flex;
@@ -314,6 +329,7 @@
   font-size: 12px;
   line-height: 1.8;
   color: var(--text-secondary);
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 900px) {
